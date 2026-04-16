@@ -142,6 +142,7 @@ export function RankingTable({
   programCode,
   highlightTeam,
   onRowExpand,
+  onForceRefresh,
   scoutingIds,
   failedIds,
   seasonId,
@@ -150,6 +151,7 @@ export function RankingTable({
   programCode?: string;
   highlightTeam?: string;
   onRowExpand?: (teamId: number) => Promise<TeamRow | null> | void;
+  onForceRefresh?: (teamId: number) => Promise<TeamRow | null> | void;
   scoutingIds?: Set<number>;
   failedIds?: Set<number>;
   seasonId?: number;
@@ -564,6 +566,13 @@ export function RankingTable({
         open={selected !== null}
         programCode={programCode}
         seasonId={seasonId}
+        onForceRefresh={onForceRefresh ? (id) => {
+          void Promise.resolve(onForceRefresh(id)).then((fresh) => {
+            if (fresh && typeof fresh === "object" && "teamNumber" in fresh) {
+              setSelected(fresh as TeamRow);
+            }
+          });
+        } : undefined}
         onOpenChange={(o) => {
           if (!o) setSelected(null);
         }}

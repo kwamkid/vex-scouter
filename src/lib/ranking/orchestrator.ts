@@ -5,7 +5,7 @@ import { getSeasonSkillsForTeams, getWorldSkillsRanks } from "@/lib/robotevents/
 import { findCurrentSeason } from "@/lib/robotevents/season";
 import { mapWithConcurrency } from "@/lib/robotevents/pool";
 import { aggregateTeamRow } from "./aggregate";
-import { getCachedScout, setCachedScout } from "@/lib/cache/scout-cache";
+import { getCachedTeamRows, setCachedTeamRow } from "@/lib/db";
 import type { TeamRow } from "@/types";
 import type { Team } from "@/lib/robotevents/schemas";
 import type { GradeLevel } from "@/lib/robotevents/programs";
@@ -96,16 +96,14 @@ async function buildRowsFromTeams(
     rankingsMap.set(id, rankingsByTeam[i]);
   });
 
-  // Check cache for each team first, only aggregate uncached ones.
+  // Check DB cache for each team first, only aggregate uncached ones.
+  const cachedRows = getCachedTeamRows(teamIds, seasonId);
   const rows: TeamRow[] = [];
   for (const num of numbers) {
     const team = byNumber.get(num) ?? null;
-    if (team) {
-      const cached = await getCachedScout(seasonId, team.id);
-      if (cached) {
-        rows.push(cached);
-        continue;
-      }
+    if (team && cachedRows.has(team.id)) {
+      rows.push(cachedRows.get(team.id)!);
+      continue;
     }
     const row = aggregateTeamRow({
       number: num,
@@ -117,8 +115,7 @@ async function buildRowsFromTeams(
       worldSkillsMap: worldMap,
     });
     rows.push(row);
-    // Write to cache in background.
-    if (team) void setCachedScout(seasonId, team.id, row);
+    if (team) setCachedTeamRow(team.id, seasonId, team.number, row);
   }
 
   return {

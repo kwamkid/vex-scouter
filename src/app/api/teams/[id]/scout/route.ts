@@ -7,7 +7,11 @@ import { findProgram } from "@/lib/robotevents/programs";
 import { reGetAllPaged } from "@/lib/robotevents/client";
 import { SeasonSchema, TeamSchema } from "@/lib/robotevents/schemas";
 import { aggregateTeamRow } from "@/lib/ranking/aggregate";
-import { getCachedScout, setCachedScout } from "@/lib/cache/scout-cache";
+import {
+  getCachedTeamRow,
+  setCachedTeamRow,
+  invalidateTeamCache,
+} from "@/lib/db";
 
 export async function GET(
   req: Request,
@@ -32,9 +36,14 @@ export async function GET(
         ? await resolveSeason(programDef.id, seasonOverride)
         : await findCurrentSeason(programDef.id);
 
-    // Check cache first (unless force refresh).
+    // Force refresh: invalidate cache first.
+    if (forceRefresh) {
+      invalidateTeamCache(teamId, season.id);
+    }
+
+    // Check DB cache.
     if (!forceRefresh) {
-      const cached = await getCachedScout(season.id, teamId);
+      const cached = getCachedTeamRow(teamId, season.id);
       if (cached) {
         return NextResponse.json({ row: cached, season, cached: true });
       }
@@ -68,8 +77,8 @@ export async function GET(
       worldSkillsMap: new Map(),
     });
 
-    // Write to cache in background.
-    void setCachedScout(season.id, teamId, row);
+    // Save to DB.
+    setCachedTeamRow(teamId, season.id, team.number, row);
 
     return NextResponse.json({ row, season, cached: false });
   } catch (err) {

@@ -158,12 +158,16 @@ export function EventScoutView({
     0,
   );
 
-  async function scoutOne(teamId: number): Promise<TeamRow | null> {
-    if (scoutedById.has(teamId)) return scoutedById.get(teamId)!;
+  async function scoutOne(
+    teamId: number,
+    force = false,
+  ): Promise<TeamRow | null> {
+    if (!force && scoutedById.has(teamId)) return scoutedById.get(teamId)!;
     setScoutingIds((s) => new Set(s).add(teamId));
     try {
       const qs = new URLSearchParams({ program: programCode });
       if (seasonId) qs.set("season", String(seasonId));
+      if (force) qs.set("refresh", "1");
       const res = await fetch(`/api/teams/${teamId}/scout?${qs.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "scout failed");
@@ -449,6 +453,7 @@ export function EventScoutView({
           programCode={programCode}
           highlightTeam={myTeam}
           onRowExpand={scoutOne}
+          onForceRefresh={(id: number) => scoutOne(id, true)}
           scoutingIds={scoutingIds}
           failedIds={failedIds}
           seasonId={seasonId ?? undefined}

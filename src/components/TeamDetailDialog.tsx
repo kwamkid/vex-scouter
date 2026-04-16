@@ -9,6 +9,7 @@ import {
   MapPin,
   Building2,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -55,13 +56,16 @@ export function TeamDetailDialog({
   onOpenChange,
   programCode,
   seasonId,
+  onForceRefresh,
 }: {
   row: TeamRow | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   programCode?: string;
   seasonId?: number;
+  onForceRefresh?: (teamId: number) => void;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
   const [events, setEvents] = useState<EventRef[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +133,28 @@ export function TeamDetailDialog({
             <DialogTitle className="text-base text-foreground sm:text-lg">
               {row.teamName ?? "—"}
             </DialogTitle>
+            {onForceRefresh && row.teamId != null && (
+              <button
+                type="button"
+                disabled={refreshing}
+                onClick={async () => {
+                  if (!row.teamId) return;
+                  setRefreshing(true);
+                  try {
+                    onForceRefresh(row.teamId);
+                  } finally {
+                    setTimeout(() => setRefreshing(false), 2000);
+                  }
+                }}
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                title="Re-fetch data from RobotEvents"
+              >
+                <RefreshCw
+                  className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`}
+                />
+                Sync
+              </button>
+            )}
           </div>
           <DialogDescription className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             {row.organization && (

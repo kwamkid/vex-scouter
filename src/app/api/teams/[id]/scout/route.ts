@@ -11,7 +11,7 @@ import {
   getCachedTeamRow,
   setCachedTeamRow,
   invalidateTeamCache,
-} from "@/lib/db";
+} from "@/lib/db/adapter";
 
 export async function GET(
   req: Request,
@@ -38,12 +38,12 @@ export async function GET(
 
     // Force refresh: invalidate cache first.
     if (forceRefresh) {
-      invalidateTeamCache(teamId, season.id);
+      await invalidateTeamCache(teamId, season.id);
     }
 
-    // Check DB cache.
+    // Check cache.
     if (!forceRefresh) {
-      const cached = getCachedTeamRow(teamId, season.id);
+      const cached = await getCachedTeamRow(teamId, season.id);
       if (cached) {
         return NextResponse.json({ row: cached, season, cached: true });
       }
@@ -77,8 +77,8 @@ export async function GET(
       worldSkillsMap: new Map(),
     });
 
-    // Save to DB.
-    setCachedTeamRow(teamId, season.id, team.number, row);
+    // Save to cache.
+    await setCachedTeamRow(teamId, season.id, team.number, row);
 
     return NextResponse.json({ row, season, cached: false });
   } catch (err) {

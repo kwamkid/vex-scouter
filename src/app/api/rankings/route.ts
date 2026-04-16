@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllCachedRows } from "@/lib/db";
+import { getAllCachedRows } from "@/lib/db/adapter";
 import { findCurrentSeason } from "@/lib/robotevents/season";
 import { findProgram } from "@/lib/robotevents/programs";
 
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
       seasonName = season.name;
     }
 
-    const rows = getAllCachedRows(seasonId, grade);
+    const rows = await getAllCachedRows(seasonId, grade);
 
     // Sort by skills score desc.
     rows.sort((a, b) => (b.skillsScore ?? 0) - (a.skillsScore ?? 0));

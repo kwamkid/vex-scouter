@@ -5,7 +5,7 @@ import { getSeasonSkillsForTeams, getWorldSkillsRanks } from "@/lib/robotevents/
 import { findCurrentSeason } from "@/lib/robotevents/season";
 import { mapWithConcurrency } from "@/lib/robotevents/pool";
 import { aggregateTeamRow } from "./aggregate";
-import { getCachedTeamRows, setCachedTeamRow } from "@/lib/db";
+import { getCachedTeamRows, setCachedTeamRow } from "@/lib/db/adapter";
 import type { TeamRow } from "@/types";
 import type { Team } from "@/lib/robotevents/schemas";
 import type { GradeLevel } from "@/lib/robotevents/programs";
@@ -96,8 +96,8 @@ async function buildRowsFromTeams(
     rankingsMap.set(id, rankingsByTeam[i]);
   });
 
-  // Check DB cache for each team first, only aggregate uncached ones.
-  const cachedRows = getCachedTeamRows(teamIds, seasonId);
+  // Check cache for each team first, only aggregate uncached ones.
+  const cachedRows = await getCachedTeamRows(teamIds, seasonId);
   const rows: TeamRow[] = [];
   for (const num of numbers) {
     const team = byNumber.get(num) ?? null;
@@ -115,7 +115,7 @@ async function buildRowsFromTeams(
       worldSkillsMap: worldMap,
     });
     rows.push(row);
-    if (team) setCachedTeamRow(team.id, seasonId, team.number, row);
+    if (team) await setCachedTeamRow(team.id, seasonId, team.number, row);
   }
 
   return {

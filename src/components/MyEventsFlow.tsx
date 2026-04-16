@@ -1,0 +1,341 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState, useTransition } from "react";
+import {
+  Calendar,
+  Loader2,
+  MapPin,
+  Search,
+  ChevronRight,
+  AlertTriangle,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  DIVISION_OPTIONS,
+  findDivision,
+  type DivisionOption,
+  type GradeLevel,
+  type ProgramCode,
+} from "@/lib/robotevents/programs";
+import type { EventRef, Team } from "@/lib/robotevents/schemas";
+import { SeasonSelect, pickDefaultSeasonId, useSeasons } from "./SeasonSelect";
+
+const STORAGE_KEY = "vex-scout:my-team";
+const DEFAULT_DIVISION = findDivision("V5RC", "Middle School")!;
+
+type LookupResult = {
+  team: Team;
+  season: { id: number; name: string };
+  events: EventRef[];
+};
+
+export function MyEventsFlow() {
+  const [division, setDivision] = useState<DivisionOption>(DEFAULT_DIVISION);
+  const [teamNumber, setTeamNumber] = useState("");
+  const [seasonId, setSeasonId] = useState<number | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [result, setResult] = useState<LookupResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const { seasons, loading: seasonsLoading } = useSeasons(division.program);
+
+  useEffect(() => {
+    // Whenever program changes, default to the most recent started season.
+    if (seasons.length === 0) return;
+    if (seasonId && seasons.some((s) => s.id === seasonId)) return;
+    setSeasonId(pickDefaultSeasonId(seasons));
+  }, [seasons, seasonId]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as {
+          program?: ProgramCode;
+          grade?: GradeLevel;
+          team?: string;
+        };
+        if (saved.program && saved.grade) {
+          const d = findDivision(saved.program, saved.grade);
+          if (d) setDivision(d);
+        }
+        if (saved.team) setTeamNumber(saved.team);
+      }
+    } catch {
+      // ignore malformed localStorage
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          program: division.program,
+          grade: division.grade,
+          team: teamNumber,
+        }),
+      );
+    } catch {
+      // ignore quota/privacy errors
+    }
+  }, [division, teamNumber, hydrated]);
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const t = teamNumber.trim().toUpperCase();
+    if (!t) return;
+    setError(null);
+    setResult(null);
+    start(async () => {
+      try {
+        const seasonQs = seasonId ? `&season=${seasonId}` : "";
+        const res = await fetch(
+          `/api/my-events?team=${encodeURIComponent(t)}&program=${division.program}${seasonQs}`,
+        );
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "lookup failed");
+        setResult(json as LookupResult);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={onSubmit} className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <DivisionSelect
+            value={division.key}
+            onChange={(key) => {
+              const next = DIVISION_OPTIONS.find((d) => d.key === key);
+              if (next) {
+                setDivision(next);
+                setSeasonId(null);
+              }
+            }}
+          />
+          <SeasonSelect
+            seasons={seasons}
+            value={seasonId}
+            onChange={setSeasonId}
+            loading={seasonsLoading}
+          />
+        </div>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Your team number
+          </span>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={teamNumber}
+              onChange={(e) => setTeamNumber(e.target.value)}
+              placeholder="e.g. 2989A"
+              autoFocus
+              spellCheck={false}
+              className="flex h-11 flex-1 rounded-md border border-input bg-background px-3 text-base font-mono uppercase text-foreground placeholder:text-muted-foreground placeholder:normal-case focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <Button
+              type="submit"
+              size="lg"
+              disabled={pending || !teamNumber.trim()}
+            >
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">Find events</span>
+            </Button>
+          </div>
+        </label>
+      </form>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span className="break-all">{error}</span>
+        </div>
+      )}
+
+      {result && (
+        <EventsList
+          result={result}
+          programCode={division.program}
+          seasonId={seasonId}
+        />
+      )}
+    </div>
+  );
+}
+
+function DivisionSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Division
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {DIVISION_OPTIONS.map((d) => (
+          <option key={d.key} value={d.key}>
+            {d.label} — {d.grade}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function EventsList({
+  result,
+  programCode,
+  seasonId,
+}: {
+  result: LookupResult;
+  programCode: ProgramCode;
+  seasonId: number | null;
+}) {
+  const { team, events, season } = result;
+
+  return (
+    <section className="space-y-3">
+      <div className="rounded-lg border border-border bg-muted/30 p-3">
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-lg font-bold text-primary">
+            {team.number}
+          </span>
+          <span className="text-sm text-foreground truncate">
+            {team.team_name ?? "—"}
+          </span>
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground truncate">
+          {team.organization ?? ""}
+          {team.organization && team.location?.country ? " · " : ""}
+          {[team.location?.city, team.location?.country]
+            .filter(Boolean)
+            .join(", ")}
+        </div>
+        <div className="mt-1 font-mono text-[11px] text-muted-foreground truncate">
+          Season: {season.name}
+        </div>
+      </div>
+
+      {events.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          No upcoming or ongoing events for this team.
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {events.map((e) => (
+            <EventCard
+              key={e.id}
+              event={e}
+              myTeam={team.number}
+              programCode={programCode}
+              seasonId={seasonId}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function EventCard({
+  event,
+  myTeam,
+  programCode,
+  seasonId,
+}: {
+  event: EventRef;
+  myTeam: string;
+  programCode: ProgramCode;
+  seasonId: number | null;
+}) {
+  const start = event.start ? new Date(event.start) : null;
+  const end = event.end ? new Date(event.end) : null;
+  const now = Date.now();
+  const ongoing =
+    start && end && start.getTime() <= now && end.getTime() >= now;
+
+  const location = [
+    event.location?.venue,
+    event.location?.city,
+    event.location?.region,
+    event.location?.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <li>
+      <Link
+        href={`/events/${event.id}?myTeam=${encodeURIComponent(myTeam)}&program=${programCode}${seasonId ? `&season=${seasonId}` : ""}`}
+        className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-muted/50 hover:border-primary/30"
+      >
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ongoing && (
+              <Badge variant="brand" className="text-[10px]">
+                Ongoing
+              </Badge>
+            )}
+            {event.level && (
+              <Badge variant="muted" className="text-[10px]">
+                {event.level}
+              </Badge>
+            )}
+          </div>
+          <div className="text-sm font-medium text-foreground line-clamp-2">
+            {event.name}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            {start && (
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {formatRange(start, end)}
+              </span>
+            )}
+            {location && (
+              <span className="flex items-center gap-1 min-w-0">
+                <MapPin className="h-3 w-3 shrink-0" />
+                <span className="truncate">{location}</span>
+              </span>
+            )}
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground self-center" />
+      </Link>
+    </li>
+  );
+}
+
+function formatRange(start: Date, end: Date | null): string {
+  const opts: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  };
+  const s = start.toLocaleDateString("en-US", opts);
+  if (!end || start.toDateString() === end.toDateString()) return s;
+  const e = end.toLocaleDateString("en-US", opts);
+  return `${s} – ${e}`;
+}

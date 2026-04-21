@@ -4,7 +4,9 @@
 
 import type { TeamRow } from "@/types";
 
-const isVercelKV = Boolean(process.env.KV_REST_API_URL);
+const isVercelKV = Boolean(
+  process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
+);
 
 // Lazy imports to avoid loading both drivers.
 async function sqlite() {

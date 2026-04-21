@@ -1,5 +1,11 @@
-import { kv } from "@vercel/kv";
+import { createClient } from "@vercel/kv";
 import type { TeamRow } from "@/types";
+
+const kv = createClient({
+  url: process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL ?? "",
+  token:
+    process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN ?? "",
+});
 
 const TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 

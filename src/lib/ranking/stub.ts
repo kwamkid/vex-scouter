@@ -3,11 +3,12 @@ import type { TeamRow } from "@/types";
 
 // Build a TeamRow from a Team payload alone — no awards/skills/rankings fetched.
 // Used for instant rendering of large event rosters before we scout each team.
-export function aggregateTeamStub(team: Team): TeamRow {
+export function aggregateTeamStub(team: Team, programId: number): TeamRow {
   const now = new Date().toISOString();
   return {
     teamNumber: team.number.toUpperCase(),
     teamId: team.id,
+    programId,
     teamName: team.team_name ?? null,
     organization: team.organization ?? null,
     grade: team.grade ?? null,

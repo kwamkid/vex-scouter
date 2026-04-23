@@ -100,6 +100,7 @@ export async function kvInvalidateTeamCache(
 export async function kvGetAllCachedRows(
   seasonId: number,
   grade?: string | null,
+  programId?: number | null,
 ): Promise<TeamRow[]> {
   try {
     const teamIds = await kv.smembers<number[]>(allKey(seasonId));
@@ -112,6 +113,7 @@ export async function kvGetAllCachedRows(
     for (const v of values) {
       if (!v) continue;
       if (grade && v.grade && v.grade !== grade) continue;
+      if (programId != null && v.programId !== programId) continue;
       rows.push(v);
     }
     return rows;

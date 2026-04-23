@@ -146,6 +146,7 @@ export function RankingTable({
   scoutingIds,
   failedIds,
   seasonId,
+  externalPaging,
 }: {
   rows: TeamRow[];
   programCode?: string;
@@ -155,6 +156,13 @@ export function RankingTable({
   scoutingIds?: Set<number>;
   failedIds?: Set<number>;
   seasonId?: number;
+  /**
+   * When set, pagination is driven by the parent:
+   *   - `startIndex` is used as the offset for row numbering (so rank column
+   *     continues from the server-side page).
+   *   - Internal Prev/Next/page-size controls are hidden; rows are rendered as-is.
+   */
+  externalPaging?: { startIndex: number };
 }) {
   const highlight = highlightTeam?.toUpperCase();
 
@@ -179,8 +187,11 @@ export function RankingTable({
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
-  const start = safePage * pageSize;
-  const pageRows = sorted.slice(start, start + pageSize);
+  const internalStart = safePage * pageSize;
+  const start = externalPaging ? externalPaging.startIndex : internalStart;
+  const pageRows = externalPaging
+    ? sorted
+    : sorted.slice(internalStart, internalStart + pageSize);
 
   function onSort(key: SortKey, defaultDir: SortDir = "asc") {
     setSort((s) => {
@@ -500,7 +511,7 @@ export function RankingTable({
       </ul>
 
       <div className="mt-4 flex flex-col items-center gap-3 text-xs text-muted-foreground sm:flex-row sm:justify-between">
-        {sorted.length > PAGE_SIZE_OPTIONS[0] ? (
+        {!externalPaging && sorted.length > PAGE_SIZE_OPTIONS[0] ? (
           <div className="flex items-center gap-3">
             <span>
               Showing{" "}
@@ -525,11 +536,13 @@ export function RankingTable({
               ))}
             </select>
           </div>
+        ) : externalPaging ? (
+          <span />
         ) : (
           <span>{sorted.length} teams</span>
         )}
         <div className="flex items-center gap-2">
-          {sorted.length > PAGE_SIZE_OPTIONS[0] && (
+          {!externalPaging && sorted.length > PAGE_SIZE_OPTIONS[0] && (
             <>
               <Button
                 variant="outline"

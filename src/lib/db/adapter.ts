@@ -72,11 +72,12 @@ export async function invalidateTeamCache(
 export async function getAllCachedRows(
   seasonId: number,
   grade?: string | null,
+  programId?: number | null,
 ): Promise<TeamRow[]> {
   if (isVercelKV) {
     const { kvGetAllCachedRows } = await kvMod();
-    return kvGetAllCachedRows(seasonId, grade);
+    return kvGetAllCachedRows(seasonId, grade, programId);
   }
   const { getAllCachedRows: sqliteGetAll } = await sqlite();
-  return sqliteGetAll(seasonId, grade);
+  return sqliteGetAll(seasonId, grade, programId);
 }

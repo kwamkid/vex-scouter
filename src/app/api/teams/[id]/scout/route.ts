@@ -70,6 +70,7 @@ export async function GET(
     const row = aggregateTeamRow({
       number: team.number.toUpperCase(),
       team,
+      programId: programDef.id,
       awards,
       events: [],
       rankings,

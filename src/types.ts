@@ -3,6 +3,7 @@ import type { Award, EventRef, Ranking, Skill } from "@/lib/robotevents/schemas"
 export type TeamRow = {
   teamNumber: string;
   teamId: number | null;
+  programId: number | null;
   teamName: string | null;
   organization: string | null;
   grade: string | null;

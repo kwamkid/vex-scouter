@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { RankingTable } from "@/components/RankingTable";
 import { parseTeamInput } from "@/lib/parse/team-input";
+import { findProgram } from "@/lib/robotevents/programs";
 import type { Division, EventRef, Team } from "@/lib/robotevents/schemas";
 import type { TeamRow } from "@/types";
 import { aggregateTeamStub } from "@/lib/ranking/stub";
@@ -87,19 +88,31 @@ export function EventScoutView({
     return new Set(parseTeamInput(manualText).map((n) => n.toUpperCase()));
   }, [manualFilterOpen, manualText]);
 
+  // Division map only has entries once per-division rankings have been
+  // published. For future events the map is empty, so the filter would wipe
+  // out every team — fall back to showing everyone in that case.
+  const hasDivisionAssignments =
+    Object.keys(teamDivisionMap).length > 0;
+
   const filteredTeams = useMemo(() => {
     let pool = teams;
+    const hasManual = manualNumbers != null && manualNumbers.size > 0;
     // Division filter (API-based, if multiple divisions + rankings available).
-    if (hasMultipleDivisions && selectedDivisionId != null) {
+    // Skipped when the user pastes a manual list — that IS their division.
+    // Also skipped when no division assignments exist yet (future events).
+    if (
+      !hasManual &&
+      hasMultipleDivisions &&
+      hasDivisionAssignments &&
+      selectedDivisionId != null
+    ) {
       pool = pool.filter(
         (t) => teamDivisionMap[t.id] === selectedDivisionId,
       );
     }
     // Manual filter (user-supplied list).
-    if (manualNumbers && manualNumbers.size > 0) {
-      pool = pool.filter((t) =>
-        manualNumbers.has(t.number.toUpperCase()),
-      );
+    if (hasManual) {
+      pool = pool.filter((t) => manualNumbers.has(t.number.toUpperCase()));
     }
     // Country filter.
     if (countryFilter) {
@@ -119,12 +132,14 @@ export function EventScoutView({
       );
     }
     return pool;
-  }, [teams, hasMultipleDivisions, selectedDivisionId, teamDivisionMap, manualNumbers, countryFilter, search]);
+  }, [teams, hasMultipleDivisions, hasDivisionAssignments, selectedDivisionId, teamDivisionMap, manualNumbers, countryFilter, search]);
+
+  const programId = findProgram(programCode)?.id ?? 1;
 
   // Phase 1: stub rows from basic team info (instant, no extra API calls).
   const stubRows = useMemo(
-    () => filteredTeams.map(aggregateTeamStub),
-    [filteredTeams],
+    () => filteredTeams.map((t) => aggregateTeamStub(t, programId)),
+    [filteredTeams, programId],
   );
 
   // Phase 2: fully-scouted rows, populated lazily per team id.
@@ -197,6 +212,41 @@ export function EventScoutView({
     void scoutOne(myTeamObj.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myTeamObj?.id]);
+
+  // Pre-populate scouted rows from the server cache so teams that have been
+  // scouted before render instantly, without a RobotEvents round-trip.
+  useEffect(() => {
+    if (!seasonId) return;
+    if (filteredTeams.length === 0) return;
+    const ids = filteredTeams.map((t) => t.id);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/teams/cache-batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids, seasonId, programId }),
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { rows?: TeamRow[] };
+        if (cancelled || !json.rows || json.rows.length === 0) return;
+        setScoutedById((prev) => {
+          const next = new Map(prev);
+          for (const row of json.rows!) {
+            if (row.teamId != null && !next.has(row.teamId)) {
+              next.set(row.teamId, row);
+            }
+          }
+          return next;
+        });
+      } catch {
+        // Non-fatal: cache preload is best-effort.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredTeams, seasonId, programId]);
 
   function scoutAll() {
     setBulkDone(false);
@@ -285,13 +335,21 @@ export function EventScoutView({
               ))}
             </select>
           </label>
-          {myTeamObj && !myDivisionId && (
+          {!hasDivisionAssignments ? (
             <span className="text-[11px] text-muted-foreground">
-              Your team&apos;s division isn&apos;t assigned yet — showing{" "}
-              {divisions.find((d) => d.id === selectedDivisionId)?.name ??
-                "first"}
-              .
+              Division assignments aren&apos;t published yet — showing all{" "}
+              <span className="font-mono text-foreground">{teams.length}</span>{" "}
+              teams. Paste your division&apos;s team numbers below to filter.
             </span>
+          ) : (
+            myTeamObj && !myDivisionId && (
+              <span className="text-[11px] text-muted-foreground">
+                Your team&apos;s division isn&apos;t assigned yet — showing{" "}
+                {divisions.find((d) => d.id === selectedDivisionId)?.name ??
+                  "first"}
+                .
+              </span>
+            )
           )}
         </div>
       )}
@@ -460,7 +518,9 @@ export function EventScoutView({
         />
       ) : (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          No teams registered for this event yet.
+          {teams.length === 0
+            ? "No teams registered for this event yet."
+            : "No teams match your current filter."}
         </div>
       )}
     </div>

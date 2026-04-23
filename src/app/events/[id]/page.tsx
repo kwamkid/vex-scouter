@@ -88,6 +88,7 @@ async function EventBody({
   const divisions: Division[] = event.divisions ?? [];
   const multipleDivisions = divisions.length > 1;
   const teamDivisionMap: Record<number, number> = {};
+  const rankingsPerDivision: { division: string; count: number }[] = [];
   if (multipleDivisions) {
     const results = await Promise.all(
       divisions.map((d) =>
@@ -95,11 +96,25 @@ async function EventBody({
       ),
     );
     divisions.forEach((d, i) => {
+      rankingsPerDivision.push({ division: d.name, count: results[i].length });
       for (const r of results[i]) {
         if (r.team?.id != null) teamDivisionMap[r.team.id] = d.id;
       }
     });
   }
+
+  // Server-side trace so we can see in the Next.js dev console why the
+  // division filter would or wouldn't produce rows.
+  console.log(
+    `[event:${eventId}] teams=${teams.length}` +
+      ` divisions=${divisions.length}` +
+      ` divisionMapEntries=${Object.keys(teamDivisionMap).length}` +
+      (rankingsPerDivision.length > 0
+        ? ` rankings=${rankingsPerDivision
+            .map((r) => `${r.division}:${r.count}`)
+            .join(",")}`
+        : ""),
+  );
 
   if (teamsError && teams.length === 0) {
     return <ErrorBanner title="Failed to load teams" message={teamsError} />;

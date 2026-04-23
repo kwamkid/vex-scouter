@@ -23,6 +23,7 @@ function countDistinctEvents(
 export function aggregateTeamRow(params: {
   number: string;
   team: Team | null;
+  programId: number;
   awards: Award[];
   events: EventRef[];
   rankings: Ranking[];
@@ -35,6 +36,7 @@ export function aggregateTeamRow(params: {
     return {
       teamNumber: params.number,
       teamId: null,
+      programId: params.programId,
       teamName: null,
       organization: null,
       grade: null,
@@ -93,6 +95,7 @@ export function aggregateTeamRow(params: {
   return {
     teamNumber: params.number,
     teamId: params.team.id,
+    programId: params.programId,
     teamName: params.team.team_name ?? null,
     organization: params.team.organization ?? null,
     grade: params.team.grade ?? null,

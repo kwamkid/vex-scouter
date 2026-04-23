@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Calendar,
   Loader2,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   DIVISION_OPTIONS,
   findDivision,
@@ -204,6 +205,8 @@ function DivisionSelect({
   );
 }
 
+type EventBucket = "upcoming" | "ongoing" | "past";
+
 function EventsList({
   result,
   programCode,
@@ -214,6 +217,37 @@ function EventsList({
   seasonId: number | null;
 }) {
   const { team, events, season } = result;
+
+  const { past, ongoing, upcoming } = useMemo(() => {
+    const now = Date.now();
+    const p: EventRef[] = [];
+    const o: EventRef[] = [];
+    const u: EventRef[] = [];
+    for (const e of events) {
+      const start = e.start ? new Date(e.start).getTime() : 0;
+      const end = e.end ? new Date(e.end).getTime() : start;
+      if (end < now) p.push(e);
+      else if (start <= now && end >= now) o.push(e);
+      else u.push(e);
+    }
+    // Past: most recent first. Upcoming: soonest first (server already asc).
+    p.reverse();
+    return { past: p, ongoing: o, upcoming: u };
+  }, [events]);
+
+  // Default to the first bucket that has data: ongoing > upcoming > past.
+  const defaultBucket: EventBucket =
+    ongoing.length > 0 ? "ongoing" : upcoming.length > 0 ? "upcoming" : "past";
+  const [bucket, setBucket] = useState<EventBucket>(defaultBucket);
+
+  // If the fetched events change (new lookup), reset to the sensible default.
+  useEffect(() => {
+    setBucket(defaultBucket);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team.id]);
+
+  const visible =
+    bucket === "past" ? past : bucket === "ongoing" ? ongoing : upcoming;
 
   return (
     <section className="space-y-3">
@@ -238,19 +272,43 @@ function EventsList({
         </div>
       </div>
 
-      {events.length === 0 ? (
+      <div className="flex flex-wrap gap-1 rounded-md border border-border bg-muted/30 p-1">
+        <BucketTab
+          active={bucket === "ongoing"}
+          onClick={() => setBucket("ongoing")}
+          label="Ongoing"
+          count={ongoing.length}
+        />
+        <BucketTab
+          active={bucket === "upcoming"}
+          onClick={() => setBucket("upcoming")}
+          label="Upcoming"
+          count={upcoming.length}
+        />
+        <BucketTab
+          active={bucket === "past"}
+          onClick={() => setBucket("past")}
+          label="Past"
+          count={past.length}
+        />
+      </div>
+
+      {visible.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-          No upcoming or ongoing events for this team.
+          {bucket === "ongoing" && "No ongoing events right now."}
+          {bucket === "upcoming" && "No upcoming events scheduled."}
+          {bucket === "past" && "No past events this season."}
         </div>
       ) : (
         <ul className="flex flex-col gap-2">
-          {events.map((e) => (
+          {visible.map((e) => (
             <EventCard
               key={e.id}
               event={e}
               myTeam={team.number}
               programCode={programCode}
               seasonId={seasonId}
+              bucket={bucket}
             />
           ))}
         </ul>
@@ -259,22 +317,58 @@ function EventsList({
   );
 }
 
+function BucketTab({
+  active,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      <span
+        className={cn(
+          "ml-1.5 font-mono text-[10px]",
+          active ? "text-primary" : "text-muted-foreground/70",
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 function EventCard({
   event,
   myTeam,
   programCode,
   seasonId,
+  bucket,
 }: {
   event: EventRef;
   myTeam: string;
   programCode: ProgramCode;
   seasonId: number | null;
+  bucket: EventBucket;
 }) {
   const start = event.start ? new Date(event.start) : null;
   const end = event.end ? new Date(event.end) : null;
-  const now = Date.now();
-  const ongoing =
-    start && end && start.getTime() <= now && end.getTime() >= now;
+  const ongoing = bucket === "ongoing";
+  const past = bucket === "past";
 
   const location = [
     event.location?.venue,
@@ -296,6 +390,11 @@ function EventCard({
             {ongoing && (
               <Badge variant="brand" className="text-[10px]">
                 Ongoing
+              </Badge>
+            )}
+            {past && (
+              <Badge variant="muted" className="text-[10px]">
+                Past
               </Badge>
             )}
             {event.level && (

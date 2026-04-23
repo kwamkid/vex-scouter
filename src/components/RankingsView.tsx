@@ -1,29 +1,32 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { Loader2, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DIVISION_OPTIONS,
   findDivision,
-  findProgram,
   type DivisionOption,
 } from "@/lib/robotevents/programs";
 import { SeasonSelect, pickDefaultSeasonId, useSeasons } from "./SeasonSelect";
+import { RankingTable } from "./RankingTable";
 import type { TeamRow } from "@/types";
-import { countryFlag } from "@/lib/country-flags";
 
 const DEFAULT_DIV = findDivision("V5RC", "Middle School")!;
-
-type RankedRow = TeamRow & { computedRank: number };
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
 export function RankingsView() {
   const [division, setDivision] = useState<DivisionOption>(DEFAULT_DIV);
   const [seasonId, setSeasonId] = useState<number | null>(null);
-  const [rows, setRows] = useState<RankedRow[]>([]);
+  const [rows, setRows] = useState<TeamRow[]>([]);
   const [total, setTotal] = useState(0);
   const [seasonName, setSeasonName] = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(25);
   const [pending, start] = useTransition();
 
   const { seasons, loading: seasonsLoading } = useSeasons(division.program);
@@ -34,6 +37,17 @@ export function RankingsView() {
     setSeasonId(pickDefaultSeasonId(seasons));
   }, [seasons, seasonId]);
 
+  // Debounce the search input so we don't refetch on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Whenever the query (division/season/search/pageSize) changes, jump back to page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [division, seasonId, debouncedSearch, pageSize]);
+
   useEffect(() => {
     if (!seasonId) return;
     start(async () => {
@@ -41,56 +55,46 @@ export function RankingsView() {
         program: division.program,
         grade: division.grade,
         season: String(seasonId),
+        page: String(page),
+        pageSize: String(pageSize),
       });
+      if (debouncedSearch) qs.set("q", debouncedSearch);
       const res = await fetch(`/api/rankings?${qs.toString()}`);
       const json = await res.json();
       setRows(json.rows ?? []);
       setTotal(json.total ?? 0);
       setSeasonName(json.seasonName ?? "");
     });
-  }, [division, seasonId]);
+  }, [division, seasonId, debouncedSearch, page, pageSize]);
 
-  function exportCSV() {
-    const headers = ["Rank", "Team", "Name", "Org", "Country", "Skills Score", "Prog", "Driver", "Awards", "Top Award", "Best Event Rank"];
-    const csvRows = [headers.join(",")];
-    for (const r of rows) {
-      csvRows.push([
-        r.computedRank,
-        r.teamNumber,
-        esc(r.teamName),
-        esc(r.organization),
-        esc(r.country),
-        r.skillsScore ?? "",
-        r.progScore ?? "",
-        r.driverScore ?? "",
-        r.awardCount,
-        esc(r.topAward),
-        r.bestEventRank ?? "",
-      ].join(","));
-    }
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `vex-rankings-${division.label}-${total}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const startIndex = (page - 1) * pageSize;
+
+  const rangeLabel = useMemo(() => {
+    if (total === 0) return "0";
+    const end = Math.min(startIndex + rows.length, total);
+    return `${startIndex + 1}–${end}`;
+  }, [startIndex, rows.length, total]);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Division
+            League
           </span>
           <select
             value={division.key}
             onChange={(e) => {
-              const next = DIVISION_OPTIONS.find((d) => d.key === e.target.value);
+              const next = DIVISION_OPTIONS.find(
+                (d) => d.key === e.target.value,
+              );
               if (next) {
                 setDivision(next);
                 setSeasonId(null);
+                setRows([]);
+                setTotal(0);
+                setSearch("");
               }
             }}
             className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -110,12 +114,44 @@ export function RankingsView() {
         />
       </div>
 
-      {pending ? (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-muted-foreground">
+          <Badge variant="brand" className="mr-2 text-[10px]">
+            {division.label}
+          </Badge>
+          {total > 0 ? (
+            <>
+              <span className="font-mono text-foreground">{rangeLabel}</span> of{" "}
+              <span className="font-mono text-foreground">{total}</span>
+            </>
+          ) : (
+            <span className="font-mono text-foreground">0</span>
+          )}{" "}
+          teams
+          {seasonName && (
+            <span className="ml-2 text-muted-foreground">
+              · {seasonName.match(/(\d{4}-\d{4}.*)/)?.[1] ?? seasonName}
+            </span>
+          )}
+        </div>
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="search"
+            placeholder="Search team # or name"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+      </div>
+
+      {pending && rows.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
           Loading rankings…
         </div>
-      ) : rows.length === 0 ? (
+      ) : total === 0 && !debouncedSearch ? (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
             No scouted teams in database for{" "}
@@ -129,141 +165,63 @@ export function RankingsView() {
             and scout teams first.
           </p>
         </div>
+      ) : total === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          No teams match &quot;{debouncedSearch}&quot;.
+        </div>
       ) : (
         <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-muted-foreground">
-            <div>
-              <Badge variant="brand" className="mr-2 text-[10px]">
-                {division.label}
-              </Badge>
-              <span className="font-mono text-foreground">{total}</span> teams
-              {seasonName && (
-                <span className="ml-2 text-muted-foreground">
-                  · {seasonName.match(/(\d{4}-\d{4}.*)/)?.[1] ?? seasonName}
-                </span>
-              )}
-            </div>
-            <Button variant="outline" size="sm" onClick={exportCSV}>
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Export CSV</span>
-            </Button>
+          <div
+            className={pending ? "opacity-60 transition-opacity" : "transition-opacity"}
+          >
+            <RankingTable
+              rows={rows}
+              programCode={division.program}
+              seasonId={seasonId ?? undefined}
+              externalPaging={{ startIndex }}
+            />
           </div>
 
-          {/* Desktop table */}
-          <div className="hidden md:block overflow-auto rounded-lg border border-border bg-card">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 border-b border-border">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground w-16">
-                    Rank
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">
-                    Team
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">
-                    Org / Country
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-muted-foreground">
-                    Score
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-muted-foreground">
-                    Prog
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-muted-foreground">
-                    Driver
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-muted-foreground">
-                    Awards
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={r.teamNumber}
-                    className="border-b border-border hover:bg-muted/30 transition-colors"
-                  >
-                    <td className="px-3 py-2 font-mono text-primary font-semibold">
-                      #{r.computedRank}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="font-mono font-bold">{r.teamNumber}</div>
-                      {r.teamName && (
-                        <div className="text-xs text-muted-foreground truncate max-w-40">
-                          {r.teamName}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      <div className="truncate max-w-52">{r.organization}</div>
-                      <div>
-                        {countryFlag(r.country)} {r.country}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-primary">
-                      {r.skillsScore ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                      {r.progScore ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                      {r.driverScore ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {r.awardCount || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile cards */}
-          <ul className="flex flex-col gap-2 md:hidden">
-            {rows.map((r) => (
-              <li
-                key={r.teamNumber}
-                className="rounded-lg border border-border bg-card p-3"
+          <div className="flex flex-col items-center gap-3 text-xs text-muted-foreground sm:flex-row sm:justify-between">
+            <div className="flex items-center gap-2">
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value) as PageSize)}
+                className="h-8 rounded border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-primary font-semibold">
-                        #{r.computedRank}
-                      </span>
-                      <span className="font-mono text-base font-bold">
-                        {r.teamNumber}
-                      </span>
-                    </div>
-                    {r.teamName && (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {r.teamName}
-                      </div>
-                    )}
-                    <div className="mt-1 text-[11px] text-muted-foreground truncate">
-                      {countryFlag(r.country)} {r.organization ?? r.country}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-mono text-lg font-semibold text-primary leading-none">
-                      {r.skillsScore ?? "—"}
-                    </div>
-                    <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
-                      {r.progScore ?? 0} / {r.driverScore ?? 0}
-                    </div>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n} / page
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || pending}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Prev</span>
+              </Button>
+              <span className="font-mono">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages || pending}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <span className="hidden sm:inline">Next</span>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </>
       )}
     </div>
   );
-}
-
-function esc(v: string | null | undefined): string {
-  if (!v) return "";
-  if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
-  return v;
 }

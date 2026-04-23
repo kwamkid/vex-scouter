@@ -30,7 +30,7 @@ export async function buildTeamRows(
 ): Promise<BuildRowsResult> {
   const season = opts.season ?? (await findCurrentSeason(opts.programId));
   const teams = await lookupTeamsByNumbers(numbers, opts.programId);
-  return buildRowsFromTeams(numbers, teams, season);
+  return buildRowsFromTeams(numbers, teams, season, opts.programId);
 }
 
 export async function buildTeamRowsFromTeamList(
@@ -42,13 +42,14 @@ export async function buildTeamRowsFromTeamList(
 ): Promise<BuildRowsResult> {
   const season = opts.season ?? (await findCurrentSeason(opts.programId));
   const numbers = teams.map((t) => t.number.toUpperCase());
-  return buildRowsFromTeams(numbers, teams, season);
+  return buildRowsFromTeams(numbers, teams, season, opts.programId);
 }
 
 async function buildRowsFromTeams(
   numbers: string[],
   teams: Team[],
   season: { id: number; name: string },
+  programId: number,
 ): Promise<BuildRowsResult> {
   const seasonId = season.id;
   const byNumber = new Map(teams.map((t) => [t.number.toUpperCase(), t]));
@@ -108,6 +109,7 @@ async function buildRowsFromTeams(
     const row = aggregateTeamRow({
       number: num,
       team,
+      programId,
       awards: team ? (awardsMap.get(team.id) ?? []) : [],
       events: [],
       rankings: team ? (rankingsMap.get(team.id) ?? []) : [],

@@ -49,22 +49,19 @@ export async function GET(req: Request) {
     }
 
     const events = await getTeamEvents(team.id, season.id);
-    const now = Date.now();
-    const upcoming = events
-      .filter((e) => {
-        const end = e.end ? new Date(e.end).getTime() : Infinity;
-        return end >= now;
-      })
-      .sort((a, b) => {
-        const aT = a.start ? new Date(a.start).getTime() : 0;
-        const bT = b.start ? new Date(b.start).getTime() : 0;
-        return aT - bT;
-      });
+    // Return every event for the season — the UI splits them into
+    // past / ongoing / upcoming buckets. Sort by start ascending so each
+    // bucket arrives in chronological order.
+    const sorted = events.sort((a, b) => {
+      const aT = a.start ? new Date(a.start).getTime() : 0;
+      const bT = b.start ? new Date(b.start).getTime() : 0;
+      return aT - bT;
+    });
 
     return NextResponse.json({
       team,
       season,
-      events: upcoming,
+      events: sorted,
     });
   } catch (err) {
     return NextResponse.json(

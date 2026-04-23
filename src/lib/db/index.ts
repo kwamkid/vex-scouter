@@ -145,6 +145,7 @@ export function invalidateSeasonCache(seasonId: number): void {
 export function getAllCachedRows(
   seasonId: number,
   grade?: string | null,
+  programId?: number | null,
 ): TeamRow[] {
   const db = getDb();
   const now = Date.now();
@@ -161,6 +162,7 @@ export function getAllCachedRows(
     try {
       const row = JSON.parse(r.row_json) as TeamRow;
       if (grade && row.grade && row.grade !== grade) continue;
+      if (programId != null && row.programId !== programId) continue;
       parsed.push(row);
     } catch {
       // skip malformed

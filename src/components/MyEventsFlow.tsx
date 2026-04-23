@@ -8,11 +8,14 @@ import {
   MapPin,
   Search,
   ChevronRight,
+  ChevronDown,
+  History,
   AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { TeamMatchHistory } from "./TeamMatchHistory";
 import {
   DIVISION_OPTIONS,
   findDivision,
@@ -306,6 +309,7 @@ function EventsList({
               key={e.id}
               event={e}
               myTeam={team.number}
+              myTeamId={team.id}
               programCode={programCode}
               seasonId={seasonId}
               bucket={bucket}
@@ -355,12 +359,14 @@ function BucketTab({
 function EventCard({
   event,
   myTeam,
+  myTeamId,
   programCode,
   seasonId,
   bucket,
 }: {
   event: EventRef;
   myTeam: string;
+  myTeamId: number;
   programCode: ProgramCode;
   seasonId: number | null;
   bucket: EventBucket;
@@ -369,6 +375,8 @@ function EventCard({
   const end = event.end ? new Date(event.end) : null;
   const ongoing = bucket === "ongoing";
   const past = bucket === "past";
+  const hasHistory = ongoing || past;
+  const [expanded, setExpanded] = useState(false);
 
   const location = [
     event.location?.venue,
@@ -379,12 +387,11 @@ function EventCard({
     .filter(Boolean)
     .join(", ");
 
+  const scoutHref = `/events/${event.id}?myTeam=${encodeURIComponent(myTeam)}&program=${programCode}${seasonId ? `&season=${seasonId}` : ""}`;
+
   return (
-    <li>
-      <Link
-        href={`/events/${event.id}?myTeam=${encodeURIComponent(myTeam)}&program=${programCode}${seasonId ? `&season=${seasonId}` : ""}`}
-        className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-muted/50 hover:border-primary/30"
-      >
+    <li className="rounded-lg border border-border bg-card transition-colors hover:border-primary/30">
+      <div className="flex items-start gap-3 p-3">
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-1.5">
             {ongoing && (
@@ -403,9 +410,12 @@ function EventCard({
               </Badge>
             )}
           </div>
-          <div className="text-sm font-medium text-foreground line-clamp-2">
+          <Link
+            href={scoutHref}
+            className="block text-sm font-medium text-foreground line-clamp-2 hover:text-primary"
+          >
             {event.name}
-          </div>
+          </Link>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             {start && (
               <span className="flex items-center gap-1">
@@ -420,9 +430,46 @@ function EventCard({
               </span>
             )}
           </div>
+
+          {hasHistory && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className={cn(
+                "mt-1 inline-flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-brand-orange/50 hover:bg-brand-orange-soft hover:text-foreground",
+                expanded &&
+                  "border-brand-orange/50 bg-brand-orange-soft text-foreground",
+              )}
+            >
+              <History className="h-3 w-3 text-brand-orange" />
+              {expanded ? "Hide" : "Match history"}
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  expanded && "rotate-180",
+                )}
+              />
+            </button>
+          )}
         </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground self-center" />
-      </Link>
+        <Link
+          href={scoutHref}
+          className="shrink-0 self-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          aria-label="Scout this event"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Link>
+      </div>
+
+      {hasHistory && expanded && (
+        <div className="border-t border-border/60 p-3">
+          <TeamMatchHistory
+            eventId={event.id}
+            teamId={myTeamId}
+            teamNumber={myTeam}
+          />
+        </div>
+      )}
     </li>
   );
 }

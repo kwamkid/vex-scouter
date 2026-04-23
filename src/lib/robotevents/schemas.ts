@@ -95,6 +95,41 @@ export const RankingSchema = z.object({
 });
 export type Ranking = z.infer<typeof RankingSchema>;
 
+export const MatchAllianceSchema = z.object({
+  color: z.string(),
+  score: z.number().nullable().optional(),
+  teams: z
+    .array(
+      z.object({
+        team: z.object({
+          id: z.number(),
+          name: z.string().nullable().optional(),
+        }),
+        sitting: z.boolean().optional(),
+      }),
+    )
+    .optional(),
+});
+export type MatchAlliance = z.infer<typeof MatchAllianceSchema>;
+
+export const MatchSchema = z.object({
+  id: z.number(),
+  event: z.object({ id: z.number(), name: z.string().optional() }).optional(),
+  division: z
+    .object({ id: z.number(), name: z.string().optional() })
+    .nullable()
+    .optional(),
+  round: z.number(),
+  instance: z.number().optional(),
+  matchnum: z.number(),
+  scheduled: z.string().nullable().optional(),
+  started: z.string().nullable().optional(),
+  scored: z.boolean().optional(),
+  alliances: z.array(MatchAllianceSchema),
+  name: z.string().nullable().optional(),
+});
+export type Match = z.infer<typeof MatchSchema>;
+
 export const SeasonSchema = z.object({
   id: z.number(),
   name: z.string(),

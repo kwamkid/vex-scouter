@@ -23,6 +23,8 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-brand: var(--primary);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-orange-soft: var(--brand-orange-soft);
 
   --color-tier-gold: #d4a017;
   --color-tier-silver: #8a8a8a;
@@ -48,9 +50,13 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
 
-  /* red-600 */
+  /* red-600 — CodeLab brand */
   --primary: oklch(0.577 0.245 27.325);
   --primary-foreground: oklch(0.985 0 0);
+
+  /* orange-500 accent — complements the red for headers, active nav, etc. */
+  --brand-orange: oklch(0.72 0.18 50);
+  --brand-orange-soft: oklch(0.72 0.18 50 / 0.12);
 
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -81,6 +87,9 @@
 
   --primary: oklch(0.637 0.25 27.325);
   --primary-foreground: oklch(0.985 0 0);
+
+  --brand-orange: oklch(0.76 0.19 50);
+  --brand-orange-soft: oklch(0.76 0.19 50 / 0.15);
 
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);

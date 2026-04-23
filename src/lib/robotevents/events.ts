@@ -1,9 +1,11 @@
 import { reGet, reGetAllPaged } from "./client";
 import {
   EventRefSchema,
+  MatchSchema,
   RankingSchema,
   TeamSchema,
   type EventRef,
+  type Match,
   type Ranking,
   type Team,
 } from "./schemas";
@@ -39,6 +41,37 @@ export async function getEventTeams(eventId: number): Promise<Team[]> {
     },
     10,
   );
+}
+
+export async function getTeamMatchesAtEvent(
+  eventId: number,
+  teamId: number,
+): Promise<Match[]> {
+  // Matches live under each division (the event-level route doesn't exist).
+  // Fan out across the event's divisions and merge.
+  const event = await getEvent(eventId);
+  const divisions = event.divisions ?? [];
+  if (divisions.length === 0) return [];
+
+  const perDivision = await Promise.all(
+    divisions.map((d) =>
+      reGetAllPaged(
+        `/events/${eventId}/divisions/${d.id}/matches`,
+        { "team[]": teamId },
+        MatchSchema,
+        {
+          revalidate: 60,
+          tags: [
+            `event:${eventId}`,
+            `event:${eventId}:matches:team:${teamId}`,
+          ],
+        },
+        5,
+      ).catch(() => [] as Match[]),
+    ),
+  );
+
+  return perDivision.flat();
 }
 
 export async function getDivisionRankings(

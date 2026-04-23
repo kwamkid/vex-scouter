@@ -19,6 +19,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { TeamMatchHistory, type TeamInfoMap } from "./TeamMatchHistory";
 import type { TeamRow } from "@/types";
 import type { Award, Ranking, EventRef } from "@/lib/robotevents/schemas";
 
@@ -50,12 +52,16 @@ function formatDate(iso?: string): string {
   }
 }
 
+type TabKey = "season" | "event";
+
 export function TeamDetailDialog({
   row,
   open,
   onOpenChange,
   programCode,
   seasonId,
+  eventId,
+  eventTeamNames,
   onForceRefresh,
 }: {
   row: TeamRow | null;
@@ -63,12 +69,25 @@ export function TeamDetailDialog({
   onOpenChange: (open: boolean) => void;
   programCode?: string;
   seasonId?: number;
+  /** When set, an extra tab shows the team's matches at this specific event. */
+  eventId?: number;
+  /** Team roster for the event, used to render full names in match cards. */
+  eventTeamNames?: TeamInfoMap;
   onForceRefresh?: (teamId: number) => void;
 }) {
   const [refreshing, setRefreshing] = useState(false);
   const [events, setEvents] = useState<EventRef[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Default to the event tab when we're in an event context — that's usually
+  // what the user actually wants to see first.
+  const [tab, setTab] = useState<TabKey>(eventId ? "event" : "season");
+
+  // Reset the active tab whenever the dialog is opened for a different team /
+  // context so stale state doesn't leak between rows.
+  useEffect(() => {
+    if (open) setTab(eventId ? "event" : "season");
+  }, [open, row?.teamId, eventId]);
 
   useEffect(() => {
     if (!open || !row?.teamId) return;
@@ -179,16 +198,82 @@ export function TeamDetailDialog({
 
         <SummaryStats row={row} />
 
-        <AwardsSection awards={row.awards} events={events} />
+        {eventId && row.teamId != null ? (
+          <>
+            <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 p-1">
+              <TabButton
+                active={tab === "event"}
+                onClick={() => setTab("event")}
+                label="This event"
+              />
+              <TabButton
+                active={tab === "season"}
+                onClick={() => setTab("season")}
+                label="Season"
+              />
+            </div>
 
-        <EventsSection
-          events={sortedEvents}
-          rankingByEvent={rankingByEvent}
-          loading={loading}
-          error={error}
-        />
+            {tab === "event" ? (
+              <section>
+                <SectionTitle>Matches at this event</SectionTitle>
+                <TeamMatchHistory
+                  eventId={eventId}
+                  teamId={row.teamId}
+                  teamNumber={row.teamNumber}
+                  teamNames={eventTeamNames}
+                  compact
+                />
+              </section>
+            ) : (
+              <>
+                <AwardsSection awards={row.awards} events={events} />
+                <EventsSection
+                  events={sortedEvents}
+                  rankingByEvent={rankingByEvent}
+                  loading={loading}
+                  error={error}
+                />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <AwardsSection awards={row.awards} events={events} />
+            <EventsSection
+              events={sortedEvents}
+              rankingByEvent={rankingByEvent}
+              loading={loading}
+              error={error}
+            />
+          </>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
   );
 }
 

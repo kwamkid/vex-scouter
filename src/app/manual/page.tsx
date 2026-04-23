@@ -1,11 +1,9 @@
-import Image from "next/image";
-import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { RankingTable } from "@/components/RankingTable";
 import { RefreshButton } from "@/components/RefreshButton";
 import { LoadingProgress } from "@/components/LoadingProgress";
-import { Button } from "@/components/ui/button";
+import { AppShell, PageHeader } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { parseTeamInput } from "@/lib/parse/team-input";
 import { buildTeamRows } from "@/lib/ranking/orchestrator";
@@ -39,73 +37,41 @@ export default async function ManualPage(props: {
     : defaultGradeFor(programDef.code)) as GradeLevel);
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
-        <Header
-          count={teams.length}
-          programCode={programDef.code}
-          grade={grade}
-        />
+    <AppShell maxWidth="7xl">
+      <PageHeader
+        title={
+          teams.length > 0
+            ? `Manual compare — ${teams.length} team${teams.length !== 1 ? "s" : ""}`
+            : "Manual compare"
+        }
+        subtitle="Paste team numbers and compare side by side."
+        badge={
+          teams.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="brand" className="text-[10px]">
+                {programDef.code}
+              </Badge>
+              <Badge variant="muted" className="text-[10px]">
+                {grade}
+              </Badge>
+            </div>
+          ) : undefined
+        }
+      />
 
-        {teams.length < 1 ? (
-          <EmptyState />
-        ) : (
-          <Suspense fallback={<LoadingProgress />}>
-            <CompareBody
-              teams={teams}
-              programId={programDef.id}
-              programCode={programDef.code}
-              grade={grade}
-            />
-          </Suspense>
-        )}
-      </div>
-    </main>
-  );
-}
-
-function Header({
-  count,
-  programCode,
-  grade,
-}: {
-  count: number;
-  programCode: ProgramCode;
-  grade: GradeLevel;
-}) {
-  return (
-    <header className="mb-6 flex items-start justify-between gap-3 sm:mb-8 sm:gap-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <Image
-          src="/logo.svg"
-          alt=""
-          width={40}
-          height={40}
-          className="shrink-0"
-        />
-        <div className="min-w-0">
-          <h1 className="text-base font-bold tracking-tight sm:text-xl">
-            Manual compare — {count} team{count !== 1 ? "s" : ""}
-          </h1>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-            <Badge variant="brand" className="text-[10px]">
-              {programCode}
-            </Badge>
-            <Badge variant="muted" className="text-[10px]">
-              {grade}
-            </Badge>
-          </div>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Button asChild variant="outline" size="sm">
-          <Link href="/">
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Home</span>
-          </Link>
-        </Button>
-      </div>
-    </header>
+      {teams.length < 1 ? (
+        <EmptyState />
+      ) : (
+        <Suspense fallback={<LoadingProgress />}>
+          <CompareBody
+            teams={teams}
+            programId={programDef.id}
+            programCode={programDef.code}
+            grade={grade}
+          />
+        </Suspense>
+      )}
+    </AppShell>
   );
 }
 

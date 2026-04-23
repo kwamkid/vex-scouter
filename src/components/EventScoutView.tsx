@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -19,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { RankingTable } from "@/components/RankingTable";
+import { UpcomingMatches } from "@/components/UpcomingMatches";
+import { PageHeader } from "@/components/AppShell";
 import { parseTeamInput } from "@/lib/parse/team-input";
 import { findProgram } from "@/lib/robotevents/programs";
 import type { Division, EventRef, Team } from "@/lib/robotevents/schemas";
@@ -135,6 +136,15 @@ export function EventScoutView({
   }, [teams, hasMultipleDivisions, hasDivisionAssignments, selectedDivisionId, teamDivisionMap, manualNumbers, countryFilter, search]);
 
   const programId = findProgram(programCode)?.id ?? 1;
+
+  // Id → {number, name} lookup for the match history UI.
+  const teamNamesMap = useMemo(() => {
+    const m = new Map<number, { number: string; name: string | null }>();
+    for (const t of teams) {
+      m.set(t.id, { number: t.number, name: t.team_name ?? null });
+    }
+    return m;
+  }, [teams]);
 
   // Phase 1: stub rows from basic team info (instant, no extra API calls).
   const stubRows = useMemo(
@@ -268,42 +278,33 @@ export function EventScoutView({
       ? `~${Math.ceil(etaSeconds / 60)} min left`
       : `~${etaSeconds}s left`;
 
-  const homeHref = myTeam
-    ? `/?team=${encodeURIComponent(myTeam)}&program=${programCode}`
-    : "/";
+  // Back returns to the events list. /scout remembers the last team via
+  // localStorage so we don't need to thread the team through the URL.
+  const homeHref = "/scout";
 
   return (
     <div className="space-y-5">
-      <header className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Image
-            src="/logo.svg"
-            alt=""
-            width={40}
-            height={40}
-            className="shrink-0"
-          />
-          <div className="min-w-0">
-            <h1 className="text-base font-bold tracking-tight sm:text-xl">
-              Event scout
-            </h1>
-            {myTeam && (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Your team:{" "}
-                <span className="font-mono font-semibold text-primary">
-                  {myTeam}
-                </span>
-              </p>
-            )}
-          </div>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href={homeHref}>
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Back</span>
-          </Link>
-        </Button>
-      </header>
+      <PageHeader
+        title="Event scout"
+        subtitle={
+          myTeam ? (
+            <>
+              Your team:{" "}
+              <span className="font-mono font-semibold text-primary">
+                {myTeam}
+              </span>
+            </>
+          ) : undefined
+        }
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href={homeHref}>
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Back to events</span>
+            </Link>
+          </Button>
+        }
+      />
 
       <EventHeader
         event={event}
@@ -505,6 +506,16 @@ export function EventScoutView({
         )}
       </div>
 
+      {isEventOngoing(event) && myTeamObj && (
+        <UpcomingMatches
+          eventId={event.id}
+          myTeamId={myTeamObj.id}
+          myTeamNumber={myTeamObj.number}
+          teamNames={teamNamesMap}
+          scoutedById={scoutedById}
+        />
+      )}
+
       {rows.length > 0 ? (
         <RankingTable
           rows={rows}
@@ -515,6 +526,8 @@ export function EventScoutView({
           scoutingIds={scoutingIds}
           failedIds={failedIds}
           seasonId={seasonId ?? undefined}
+          eventId={event.id}
+          eventTeamNames={teamNamesMap}
         />
       ) : (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -603,6 +616,15 @@ function EventHeader({
       )}
     </div>
   );
+}
+
+function isEventOngoing(event: EventRef): boolean {
+  if (event.ongoing === true) return true;
+  const now = Date.now();
+  const start = event.start ? new Date(event.start).getTime() : null;
+  const end = event.end ? new Date(event.end).getTime() : null;
+  if (start == null || end == null) return false;
+  return start <= now && now <= end;
 }
 
 function formatRange(start: Date, end: Date | null): string {

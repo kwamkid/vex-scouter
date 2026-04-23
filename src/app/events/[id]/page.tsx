@@ -1,8 +1,8 @@
 import { Suspense } from "react";
-import Image from "next/image";
 import { AlertTriangle } from "lucide-react";
 import { LoadingProgress } from "@/components/LoadingProgress";
 import { EventScoutView } from "@/components/EventScoutView";
+import { AppShell } from "@/components/AppShell";
 import {
   getDivisionRankings,
   getEvent,
@@ -27,27 +27,23 @@ export default async function EventPage(props: {
 
   if (!Number.isFinite(eventId)) {
     return (
-      <main className="min-h-screen bg-background text-foreground">
-        <div className="mx-auto max-w-3xl px-4 py-10">
-          <ErrorBanner title="Invalid event" message={`Bad event id: ${id}`} />
-        </div>
-      </main>
+      <AppShell maxWidth="3xl">
+        <ErrorBanner title="Invalid event" message={`Bad event id: ${id}`} />
+      </AppShell>
     );
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
-        <Suspense fallback={<LoadingShell />}>
-          <EventBody
-            eventId={eventId}
-            myTeam={myTeam}
-            programCode={programDef.code}
-            seasonId={seasonId}
-          />
-        </Suspense>
-      </div>
-    </main>
+    <AppShell maxWidth="7xl">
+      <Suspense fallback={<LoadingShell />}>
+        <EventBody
+          eventId={eventId}
+          myTeam={myTeam}
+          programCode={programDef.code}
+          seasonId={seasonId}
+        />
+      </Suspense>
+    </AppShell>
   );
 }
 
@@ -136,10 +132,7 @@ async function EventBody({
 function LoadingShell() {
   return (
     <div className="space-y-5">
-      <header className="flex items-center gap-3">
-        <Image src="/logo.svg" alt="" width={40} height={40} />
-        <div className="text-base font-bold">Loading event…</div>
-      </header>
+      <div className="text-base font-bold">Loading event…</div>
       <LoadingProgress />
     </div>
   );

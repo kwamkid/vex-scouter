@@ -34,6 +34,7 @@ import {
   type SortKey,
 } from "@/lib/ranking/sort";
 import { TeamDetailDialog } from "./TeamDetailDialog";
+import type { TeamInfoMap } from "./TeamMatchHistory";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
@@ -146,6 +147,8 @@ export function RankingTable({
   scoutingIds,
   failedIds,
   seasonId,
+  eventId,
+  eventTeamNames,
   externalPaging,
 }: {
   rows: TeamRow[];
@@ -156,6 +159,13 @@ export function RankingTable({
   scoutingIds?: Set<number>;
   failedIds?: Set<number>;
   seasonId?: number;
+  /**
+   * Optional event context. When present, the team detail dialog shows a
+   * "Matches at this event" tab.
+   */
+  eventId?: number;
+  /** Team roster for the event — used to display full team names in matches. */
+  eventTeamNames?: TeamInfoMap;
   /**
    * When set, pagination is driven by the parent:
    *   - `startIndex` is used as the offset for row numbering (so rank column
@@ -579,6 +589,8 @@ export function RankingTable({
         open={selected !== null}
         programCode={programCode}
         seasonId={seasonId}
+        eventId={eventId}
+        eventTeamNames={eventTeamNames}
         onForceRefresh={onForceRefresh ? (id) => {
           void Promise.resolve(onForceRefresh(id)).then((fresh) => {
             if (fresh && typeof fresh === "object" && "teamNumber" in fresh) {

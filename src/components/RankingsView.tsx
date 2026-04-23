@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   DIVISION_OPTIONS,
   findDivision,
@@ -14,19 +13,14 @@ import { RankingTable } from "./RankingTable";
 import type { TeamRow } from "@/types";
 
 const DEFAULT_DIV = findDivision("V5RC", "Middle School")!;
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
-type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
+
+type RankedRow = TeamRow & { computedRank: number };
 
 export function RankingsView() {
   const [division, setDivision] = useState<DivisionOption>(DEFAULT_DIV);
   const [seasonId, setSeasonId] = useState<number | null>(null);
-  const [rows, setRows] = useState<TeamRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [seasonName, setSeasonName] = useState("");
+  const [rows, setRows] = useState<RankedRow[]>([]);
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(25);
   const [pending, start] = useTransition();
 
   const { seasons, loading: seasonsLoading } = useSeasons(division.program);
@@ -37,17 +31,8 @@ export function RankingsView() {
     setSeasonId(pickDefaultSeasonId(seasons));
   }, [seasons, seasonId]);
 
-  // Debounce the search input so we don't refetch on every keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 250);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  // Whenever the query (division/season/search/pageSize) changes, jump back to page 1.
-  useEffect(() => {
-    setPage(1);
-  }, [division, seasonId, debouncedSearch, pageSize]);
-
+  // Fetch rows exactly once per (league, season) change. Filtering + pagination
+  // happen locally so typing in the search box feels instant.
   useEffect(() => {
     if (!seasonId) return;
     start(async () => {
@@ -55,26 +40,28 @@ export function RankingsView() {
         program: division.program,
         grade: division.grade,
         season: String(seasonId),
-        page: String(page),
-        pageSize: String(pageSize),
       });
-      if (debouncedSearch) qs.set("q", debouncedSearch);
       const res = await fetch(`/api/rankings?${qs.toString()}`);
       const json = await res.json();
       setRows(json.rows ?? []);
-      setTotal(json.total ?? 0);
-      setSeasonName(json.seasonName ?? "");
     });
-  }, [division, seasonId, debouncedSearch, page, pageSize]);
+  }, [division, seasonId]);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const startIndex = (page - 1) * pageSize;
+  const seasonName = useMemo(() => {
+    if (!seasonId) return "";
+    return seasons.find((s) => s.id === seasonId)?.name ?? "";
+  }, [seasons, seasonId]);
 
-  const rangeLabel = useMemo(() => {
-    if (total === 0) return "0";
-    const end = Math.min(startIndex + rows.length, total);
-    return `${startIndex + 1}–${end}`;
-  }, [startIndex, rows.length, total]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.teamNumber.toLowerCase().includes(q) ||
+        (r.teamName ?? "").toLowerCase().includes(q) ||
+        (r.organization ?? "").toLowerCase().includes(q),
+    );
+  }, [rows, search]);
 
   return (
     <div className="space-y-4">
@@ -93,7 +80,6 @@ export function RankingsView() {
                 setDivision(next);
                 setSeasonId(null);
                 setRows([]);
-                setTotal(0);
                 setSearch("");
               }
             }}
@@ -119,15 +105,16 @@ export function RankingsView() {
           <Badge variant="brand" className="mr-2 text-[10px]">
             {division.label}
           </Badge>
-          {total > 0 ? (
+          <span className="font-mono text-foreground">{rows.length}</span> teams
+          {search && rows.length > 0 && (
             <>
-              <span className="font-mono text-foreground">{rangeLabel}</span> of{" "}
-              <span className="font-mono text-foreground">{total}</span>
+              {" "}·{" "}
+              <span className="font-mono text-foreground">
+                {filtered.length}
+              </span>{" "}
+              match
             </>
-          ) : (
-            <span className="font-mono text-foreground">0</span>
-          )}{" "}
-          teams
+          )}
           {seasonName && (
             <span className="ml-2 text-muted-foreground">
               · {seasonName.match(/(\d{4}-\d{4}.*)/)?.[1] ?? seasonName}
@@ -151,7 +138,7 @@ export function RankingsView() {
           <Loader2 className="h-5 w-5 animate-spin" />
           Loading rankings…
         </div>
-      ) : total === 0 && !debouncedSearch ? (
+      ) : rows.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
             No scouted teams in database for{" "}
@@ -165,62 +152,16 @@ export function RankingsView() {
             and scout teams first.
           </p>
         </div>
-      ) : total === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          No teams match &quot;{debouncedSearch}&quot;.
+          No teams match &quot;{search}&quot;.
         </div>
       ) : (
-        <>
-          <div
-            className={pending ? "opacity-60 transition-opacity" : "transition-opacity"}
-          >
-            <RankingTable
-              rows={rows}
-              programCode={division.program}
-              seasonId={seasonId ?? undefined}
-              externalPaging={{ startIndex }}
-            />
-          </div>
-
-          <div className="flex flex-col items-center gap-3 text-xs text-muted-foreground sm:flex-row sm:justify-between">
-            <div className="flex items-center gap-2">
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value) as PageSize)}
-                className="h-8 rounded border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n} / page
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1 || pending}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Prev</span>
-              </Button>
-              <span className="font-mono">
-                {page} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages || pending}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                <span className="hidden sm:inline">Next</span>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </>
+        <RankingTable
+          rows={filtered}
+          programCode={division.program}
+          seasonId={seasonId ?? undefined}
+        />
       )}
     </div>
   );

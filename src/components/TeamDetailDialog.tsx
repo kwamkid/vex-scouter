@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Trophy,
   Medal,
@@ -8,9 +9,13 @@ import {
   Calendar,
   MapPin,
   Building2,
+  ChevronRight,
   Loader2,
   RefreshCw,
+  Star,
+  Target,
 } from "lucide-react";
+import { useWatchlist } from "@/lib/watchlist";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { TeamMatchHistory, type TeamInfoMap } from "./TeamMatchHistory";
 import type { TeamRow } from "@/types";
-import type { Award, Ranking, EventRef } from "@/lib/robotevents/schemas";
+import type { Award, Ranking, EventRef, Skill } from "@/lib/robotevents/schemas";
 
 function awardTierFor(title: string): {
   tier: number;
@@ -52,7 +57,7 @@ function formatDate(iso?: string): string {
   }
 }
 
-type TabKey = "season" | "event";
+type TabKey = "event" | "events" | "awards" | "skills";
 
 export function TeamDetailDialog({
   row,
@@ -79,14 +84,15 @@ export function TeamDetailDialog({
   const [events, setEvents] = useState<EventRef[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Default to the event tab when we're in an event context — that's usually
-  // what the user actually wants to see first.
-  const [tab, setTab] = useState<TabKey>(eventId ? "event" : "season");
+  const watchlist = useWatchlist();
+  // Default to the event tab when we're in an event context, otherwise jump
+  // straight to "Events" — that's the most common entry point from Watching.
+  const [tab, setTab] = useState<TabKey>(eventId ? "event" : "events");
 
   // Reset the active tab whenever the dialog is opened for a different team /
   // context so stale state doesn't leak between rows.
   useEffect(() => {
-    if (open) setTab(eventId ? "event" : "season");
+    if (open) setTab(eventId ? "event" : "events");
   }, [open, row?.teamId, eventId]);
 
   useEffect(() => {
@@ -152,6 +158,19 @@ export function TeamDetailDialog({
             <DialogTitle className="text-base text-foreground sm:text-lg">
               {row.teamName ?? "—"}
             </DialogTitle>
+            {programCode && (
+              <WatchToggle
+                watching={watchlist.has(row.teamNumber, programCode)}
+                onToggle={() =>
+                  watchlist.toggle({
+                    teamId: row.teamId,
+                    teamNumber: row.teamNumber,
+                    teamName: row.teamName,
+                    program: programCode,
+                  })
+                }
+              />
+            )}
             {onForceRefresh && row.teamId != null && (
               <button
                 type="button"
@@ -198,57 +217,94 @@ export function TeamDetailDialog({
 
         <SummaryStats row={row} />
 
-        {eventId && row.teamId != null ? (
-          <>
-            <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 p-1">
-              <TabButton
-                active={tab === "event"}
-                onClick={() => setTab("event")}
-                label="This event"
-              />
-              <TabButton
-                active={tab === "season"}
-                onClick={() => setTab("season")}
-                label="Season"
-              />
-            </div>
-
-            {tab === "event" ? (
-              <section>
-                <SectionTitle>Matches at this event</SectionTitle>
-                <TeamMatchHistory
-                  eventId={eventId}
-                  teamId={row.teamId}
-                  teamNumber={row.teamNumber}
-                  teamNames={eventTeamNames}
-                  compact
-                />
-              </section>
-            ) : (
-              <>
-                <AwardsSection awards={row.awards} events={events} />
-                <EventsSection
-                  events={sortedEvents}
-                  rankingByEvent={rankingByEvent}
-                  loading={loading}
-                  error={error}
-                />
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            <AwardsSection awards={row.awards} events={events} />
-            <EventsSection
-              events={sortedEvents}
-              rankingByEvent={rankingByEvent}
-              loading={loading}
-              error={error}
+        <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 p-1 overflow-x-auto">
+          {eventId && row.teamId != null && (
+            <TabButton
+              active={tab === "event"}
+              onClick={() => setTab("event")}
+              label="This event"
             />
-          </>
+          )}
+          <TabButton
+            active={tab === "events"}
+            onClick={() => setTab("events")}
+            label={`Events (${events?.length ?? row.eventCount})`}
+          />
+          <TabButton
+            active={tab === "awards"}
+            onClick={() => setTab("awards")}
+            label={`Awards (${row.awards.length})`}
+          />
+          <TabButton
+            active={tab === "skills"}
+            onClick={() => setTab("skills")}
+            label={`Skills (${row.skills.length})`}
+          />
+        </div>
+
+        {tab === "event" && eventId && row.teamId != null && (
+          <section>
+            <TeamMatchHistory
+              eventId={eventId}
+              teamId={row.teamId}
+              teamNumber={row.teamNumber}
+              teamNames={eventTeamNames}
+              compact
+            />
+          </section>
+        )}
+
+        {tab === "events" && (
+          <EventsSection
+            events={sortedEvents}
+            rankingByEvent={rankingByEvent}
+            loading={loading}
+            error={error}
+            programCode={programCode}
+            myTeam={row.teamNumber}
+          />
+        )}
+
+        {tab === "awards" && (
+          <AwardsSection awards={row.awards} events={events} />
+        )}
+
+        {tab === "skills" && (
+          <SkillsSection skills={row.skills} events={events} />
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function WatchToggle({
+  watching,
+  onToggle,
+}: {
+  watching: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={watching ? "Remove from watchlist" : "Save to watchlist"}
+      aria-pressed={watching}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+        watching
+          ? "border-brand-orange/60 bg-brand-orange-soft text-foreground"
+          : "border-border text-muted-foreground hover:border-brand-orange/50 hover:text-foreground",
+      )}
+    >
+      <Star
+        className={cn(
+          "h-3.5 w-3.5",
+          watching ? "fill-brand-orange text-brand-orange" : "",
+        )}
+      />
+      {watching ? "Watching" : "Watch"}
+    </button>
   );
 }
 
@@ -372,11 +428,15 @@ function EventsSection({
   rankingByEvent,
   loading,
   error,
+  programCode,
+  myTeam,
 }: {
   events: EventRef[] | null;
   rankingByEvent: Map<number, Ranking>;
   loading: boolean;
   error: string | null;
+  programCode?: string;
+  myTeam: string;
 }) {
   if (loading) {
     return (
@@ -412,48 +472,198 @@ function EventsSection({
 
   return (
     <section>
-      <SectionTitle>Events ({events.length})</SectionTitle>
       <ul className="flex flex-col gap-1.5">
         {events.map((e) => {
           const rank = rankingByEvent.get(e.id);
+          const href = `/events/${e.id}?myTeam=${encodeURIComponent(myTeam)}${programCode ? `&program=${programCode}` : ""}`;
           return (
-            <li
-              key={e.id}
-              className="flex items-start gap-3 rounded-md border border-border bg-muted/30 px-3 py-2"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-sm text-foreground truncate">{e.name}</div>
-                <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-                  {e.start && (
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDate(e.start)}
-                    </span>
-                  )}
-                  {e.level && <span>· {e.level}</span>}
+            <li key={e.id}>
+              <Link
+                href={href}
+                className="flex items-start gap-3 rounded-md border border-border bg-muted/30 px-3 py-2 transition-colors hover:border-primary/40 hover:bg-muted/60"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-foreground truncate">
+                    {e.name}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                    {e.start && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {formatDate(e.start)}
+                      </span>
+                    )}
+                    {e.level && <span>· {e.level}</span>}
+                  </div>
                 </div>
-              </div>
-              {rank ? (
-                <div className="flex flex-col items-end shrink-0">
-                  <span className="font-mono text-sm font-semibold text-primary">
-                    #{rank.rank}
-                  </span>
-                  {(rank.wins != null ||
-                    rank.losses != null ||
-                    rank.ties != null) && (
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {rank.wins ?? 0}-{rank.losses ?? 0}-{rank.ties ?? 0}
+                {rank ? (
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="font-mono text-sm font-semibold text-primary">
+                      #{rank.rank}
                     </span>
-                  )}
-                </div>
-              ) : (
-                <span className="text-xs text-muted-foreground">—</span>
-              )}
+                    {(rank.wins != null ||
+                      rank.losses != null ||
+                      rank.ties != null) && (
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {rank.wins ?? 0}-{rank.losses ?? 0}-{rank.ties ?? 0}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+                <ChevronRight className="h-4 w-4 shrink-0 self-center text-muted-foreground" />
+              </Link>
             </li>
           );
         })}
       </ul>
     </section>
+  );
+}
+
+function SkillsSection({
+  skills,
+  events,
+}: {
+  skills: Skill[];
+  events: EventRef[] | null;
+}) {
+  // Group runs by event so we can show prog + driver side by side per event,
+  // and rank events by combined score (best first).
+  const groups = useMemo(() => {
+    const eventNameById = new Map<number, string>();
+    if (events) {
+      for (const e of events) eventNameById.set(e.id, e.name);
+    }
+    type Group = {
+      eventId: number | null;
+      eventName: string;
+      prog: number | null;
+      driver: number | null;
+      progRank: number | null;
+      driverRank: number | null;
+      attempts: number;
+    };
+    const map = new Map<string, Group>();
+    for (const s of skills) {
+      const id = s.event?.id ?? null;
+      const key = id == null ? "__no_event__" : String(id);
+      const cur =
+        map.get(key) ??
+        ({
+          eventId: id,
+          eventName:
+            (id != null && eventNameById.get(id)) ??
+            s.event?.name ??
+            "Unattached run",
+          prog: null,
+          driver: null,
+          progRank: null,
+          driverRank: null,
+          attempts: 0,
+        } as Group);
+      const t = String(s.type).toLowerCase();
+      if (t === "programming") {
+        cur.prog = Math.max(cur.prog ?? 0, s.score);
+        if (s.rank != null)
+          cur.progRank =
+            cur.progRank == null ? s.rank : Math.min(cur.progRank, s.rank);
+      } else if (t === "driver") {
+        cur.driver = Math.max(cur.driver ?? 0, s.score);
+        if (s.rank != null)
+          cur.driverRank =
+            cur.driverRank == null ? s.rank : Math.min(cur.driverRank, s.rank);
+      }
+      cur.attempts += s.attempts ?? 0;
+      map.set(key, cur);
+    }
+    const arr = [...map.values()];
+    arr.sort(
+      (a, b) =>
+        (b.prog ?? 0) + (b.driver ?? 0) - ((a.prog ?? 0) + (a.driver ?? 0)),
+    );
+    return arr;
+  }, [skills, events]);
+
+  if (skills.length === 0) {
+    return (
+      <section>
+        <p className="text-xs text-muted-foreground">
+          No skills runs this season.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <ul className="flex flex-col gap-1.5">
+        {groups.map((g, i) => {
+          const total = (g.prog ?? 0) + (g.driver ?? 0);
+          return (
+            <li
+              key={g.eventId ?? `none-${i}`}
+              className="rounded-md border border-border bg-muted/30 px-3 py-2"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-foreground truncate">
+                    {g.eventName}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-baseline gap-1">
+                  <Target className="h-3 w-3 text-brand-orange" />
+                  <span className="font-mono text-base font-semibold text-foreground">
+                    {total || "—"}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-1.5 grid grid-cols-2 gap-2 text-[11px]">
+                <SkillRunCell
+                  label="Programming"
+                  score={g.prog}
+                  rank={g.progRank}
+                />
+                <SkillRunCell
+                  label="Driver"
+                  score={g.driver}
+                  rank={g.driverRank}
+                />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function SkillRunCell({
+  label,
+  score,
+  rank,
+}: {
+  label: string;
+  score: number | null;
+  rank: number | null;
+}) {
+  return (
+    <div className="rounded bg-background/60 px-2 py-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          {label}
+        </span>
+        {rank != null && (
+          <span className="font-mono text-[10px] text-muted-foreground">
+            #{rank}
+          </span>
+        )}
+      </div>
+      <div className="font-mono text-sm font-semibold text-foreground">
+        {score ?? "—"}
+      </div>
+    </div>
   );
 }
 

@@ -33,7 +33,7 @@ export function CountrySelect({ countries, value, onChange }: Props) {
 
   return (
     <div className="relative">
-      <div className="flex h-10 items-center rounded-md border border-input bg-background text-sm">
+      <div className="flex h-10 items-center rounded-md border border-input bg-background text-base">
         <input
           ref={inputRef}
           type="text"

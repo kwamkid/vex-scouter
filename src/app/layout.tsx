@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const inter = Inter({
@@ -13,9 +14,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VEX Worlds Match Scout",
+  title: "VEX Match Scouter",
   description:
-    "Scout V5RC Push Back teams you'll face at Worlds — paste team numbers and compare rankings.",
+    "Scout opponents, study match history, and prep for your division — for V5RC and VIQRC teams.",
   icons: {
     icon: "/logo.svg",
     shortcut: "/logo.svg",
@@ -40,7 +41,7 @@ export default function RootLayout({
       className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background text-foreground">
-        {children}
+        <TooltipProvider delayDuration={150}>{children}</TooltipProvider>
       </body>
     </html>
   );

@@ -127,16 +127,24 @@ function MatchCard({
   teamNames?: TeamInfoMap;
 }) {
   const outcome = teamOutcome(match, teamId);
+  // Fixed columns: blue alliance always left, red always right.
+  const blueAlliance = match.alliances.find(
+    (a) => a.color?.toLowerCase() === "blue",
+  );
+  const redAlliance = match.alliances.find(
+    (a) => a.color?.toLowerCase() === "red",
+  );
   const myAlliance = match.alliances.find((a) =>
     a.teams?.some((t) => t.team.id === teamId),
   );
   const oppAlliance = match.alliances.find((a) => a !== myAlliance);
-  const resolved = outcome != null;
-
   const myScore = myAlliance?.score ?? 0;
   const oppScore = oppAlliance?.score ?? 0;
-  const myWon = resolved && myScore > oppScore;
-  const oppWon = resolved && oppScore > myScore;
+  const blueScore = blueAlliance?.score ?? 0;
+  const redScore = redAlliance?.score ?? 0;
+  const played = outcome != null;
+  const blueWon = played && blueScore > redScore;
+  const redWon = played && redScore > blueScore;
 
   return (
     <li className="grid grid-cols-[3rem_1fr_2rem_1fr_5rem] items-center gap-2 px-2 py-1.5 border-b border-border/50 last:border-b-0">
@@ -144,21 +152,21 @@ function MatchCard({
         {matchLabel(match)}
       </span>
       <AllianceCell
-        alliance={myAlliance}
+        alliance={blueAlliance}
         myTeamNumber={teamNumber}
         teamNames={teamNames}
-        winner={myWon}
-        loser={oppWon}
+        winner={blueWon}
+        loser={redWon}
       />
       <span className="text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
         vs
       </span>
       <AllianceCell
-        alliance={oppAlliance}
+        alliance={redAlliance}
         myTeamNumber={teamNumber}
         teamNames={teamNames}
-        winner={oppWon}
-        loser={myWon}
+        winner={redWon}
+        loser={blueWon}
       />
       <OutcomeBadge outcome={outcome} myScore={myScore} oppScore={oppScore} />
     </li>
@@ -227,21 +235,32 @@ function AllianceCell({
         ? "bg-blue-500"
         : "bg-muted-foreground";
 
-  // Winner: 2px border in the winning alliance's color. Loser: no border
-  // emphasis, just slight fade. No background tints anywhere.
-  const winnerBorder =
-    winner && color === "red"
-      ? "border-destructive"
-      : winner && color === "blue"
-        ? "border-blue-500"
-        : "";
+  // Strong alliance bg = winner. Dim gray = loser. Light tint = pending.
+  let bgClass = "";
+  if (winner) {
+    bgClass =
+      color === "red"
+        ? "bg-destructive/15"
+        : color === "blue"
+          ? "bg-blue-500/15"
+          : "";
+  } else if (loser) {
+    bgClass = "bg-muted/40";
+  } else {
+    bgClass =
+      color === "red"
+        ? "bg-destructive/5"
+        : color === "blue"
+          ? "bg-blue-500/5"
+          : "";
+  }
 
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-2 min-w-0 rounded-md border-2",
-        winner ? winnerBorder : "border-transparent",
-        loser && "opacity-60",
+        "flex items-center gap-2 px-3 py-2 min-w-0 rounded-md",
+        bgClass,
+        loser && "opacity-70",
       )}
     >
       <span className={cn("h-2 w-2 shrink-0 rounded-full", dotClass)} />

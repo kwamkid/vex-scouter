@@ -11,11 +11,13 @@ import {
   ChevronDown,
   History,
   AlertTriangle,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { TeamMatchHistory } from "./TeamMatchHistory";
+import { useWatchlist } from "@/lib/watchlist";
 import {
   DIVISION_OPTIONS,
   findDivision,
@@ -252,27 +254,61 @@ function EventsList({
   const visible =
     bucket === "past" ? past : bucket === "ongoing" ? ongoing : upcoming;
 
+  const watchlist = useWatchlist();
+  const isWatched = watchlist.has(team.number, programCode);
+
   return (
     <section className="space-y-3">
-      <div className="rounded-lg border border-border bg-muted/30 p-3">
-        <div className="flex items-baseline gap-2">
-          <span className="font-mono text-lg font-bold text-primary">
-            {team.number}
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-lg font-bold text-primary">
+              {team.number}
+            </span>
+            <span className="text-sm text-foreground truncate">
+              {team.team_name ?? "—"}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground truncate">
+            {team.organization ?? ""}
+            {team.organization && team.location?.country ? " · " : ""}
+            {[team.location?.city, team.location?.country]
+              .filter(Boolean)
+              .join(", ")}
+          </div>
+          <div className="mt-1 font-mono text-[11px] text-muted-foreground truncate">
+            Season: {season.name}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            watchlist.toggle({
+              teamId: team.id,
+              teamNumber: team.number,
+              teamName: team.team_name ?? null,
+              program: programCode,
+            })
+          }
+          aria-pressed={isWatched}
+          title={isWatched ? "Remove from watchlist" : "Save to watchlist"}
+          className={cn(
+            "shrink-0 inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
+            isWatched
+              ? "border-brand-orange/60 bg-brand-orange-soft text-foreground"
+              : "border-border text-muted-foreground hover:border-brand-orange/50 hover:text-foreground",
+          )}
+        >
+          <Star
+            className={cn(
+              "h-3.5 w-3.5",
+              isWatched ? "fill-brand-orange text-brand-orange" : "",
+            )}
+          />
+          <span className="hidden sm:inline">
+            {isWatched ? "Watching" : "Watch"}
           </span>
-          <span className="text-sm text-foreground truncate">
-            {team.team_name ?? "—"}
-          </span>
-        </div>
-        <div className="mt-1 text-xs text-muted-foreground truncate">
-          {team.organization ?? ""}
-          {team.organization && team.location?.country ? " · " : ""}
-          {[team.location?.city, team.location?.country]
-            .filter(Boolean)
-            .join(", ")}
-        </div>
-        <div className="mt-1 font-mono text-[11px] text-muted-foreground truncate">
-          Season: {season.name}
-        </div>
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-md border border-border bg-muted/30 p-1">

@@ -92,6 +92,7 @@ export const RankingSchema = z.object({
   wp: z.number().nullable().optional(),
   ap: z.number().nullable().optional(),
   sp: z.number().nullable().optional(),
+  awp: z.number().nullable().optional(),
 });
 export type Ranking = z.infer<typeof RankingSchema>;
 

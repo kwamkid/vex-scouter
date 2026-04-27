@@ -1,16 +1,16 @@
 import { AppShell, PageHeader } from "@/components/AppShell";
-import { RankingsView } from "@/components/RankingsView";
-
-export const dynamic = "force-dynamic";
+import { MyEventsFlow } from "@/components/MyEventsFlow";
 
 export default function HomePage() {
   return (
-    <AppShell maxWidth="7xl">
+    <AppShell maxWidth="2xl">
       <PageHeader
-        title="Rankings"
-        subtitle="Skills ranking aggregated from scouted teams."
+        title="Events"
+        subtitle="Find your team's upcoming, ongoing, and past events."
       />
-      <RankingsView />
+      <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+        <MyEventsFlow />
+      </section>
     </AppShell>
   );
 }

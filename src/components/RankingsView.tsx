@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   DIVISION_OPTIONS,
   findDivision,
@@ -21,6 +23,7 @@ export function RankingsView() {
   const [seasonId, setSeasonId] = useState<number | null>(null);
   const [rows, setRows] = useState<RankedRow[]>([]);
   const [search, setSearch] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
   const [pending, start] = useTransition();
 
   const { seasons, loading: seasonsLoading } = useSeasons(division.program);
@@ -41,11 +44,13 @@ export function RankingsView() {
         grade: division.grade,
         season: String(seasonId),
       });
-      const res = await fetch(`/api/rankings?${qs.toString()}`);
+      const res = await fetch(`/api/rankings?${qs.toString()}`, {
+        cache: "no-store",
+      });
       const json = await res.json();
       setRows(json.rows ?? []);
     });
-  }, [division, seasonId]);
+  }, [division, seasonId, refreshTick]);
 
   const seasonName = useMemo(() => {
     if (!seasonId) return "";
@@ -121,15 +126,30 @@ export function RankingsView() {
             </span>
           )}
         </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            placeholder="Search team # or name"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="Search team # or name"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRefreshTick((t) => t + 1)}
+            disabled={pending}
+            title="Re-fetch rankings from the database"
+            className="shrink-0"
+          >
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", pending && "animate-spin")}
+            />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
         </div>
       </div>
 
@@ -146,8 +166,8 @@ export function RankingsView() {
           </p>
           <p className="mt-2 text-xs text-muted-foreground">
             Go to{" "}
-            <a href="/scout" className="text-primary hover:underline">
-              Upcoming Events
+            <a href="/" className="text-primary hover:underline">
+              Events
             </a>{" "}
             and scout teams first.
           </p>

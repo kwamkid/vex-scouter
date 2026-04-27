@@ -1,5 +1,16 @@
-import { redirect } from "next/navigation";
+import { AppShell, PageHeader } from "@/components/AppShell";
+import { RankingsView } from "@/components/RankingsView";
 
-export default function RankingsRedirect() {
-  redirect("/");
+export const dynamic = "force-dynamic";
+
+export default function RankingsPage() {
+  return (
+    <AppShell maxWidth="7xl">
+      <PageHeader
+        title="Rankings"
+        subtitle="Skills ranking aggregated from scouted teams."
+      />
+      <RankingsView />
+    </AppShell>
+  );
 }

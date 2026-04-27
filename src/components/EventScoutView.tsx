@@ -18,8 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { RankingTable } from "@/components/RankingTable";
-import { UpcomingMatches } from "@/components/UpcomingMatches";
+import { EventMatches } from "@/components/EventMatches";
 import { PageHeader } from "@/components/AppShell";
+import { cn } from "@/lib/utils";
 import { parseTeamInput } from "@/lib/parse/team-input";
 import { findProgram } from "@/lib/robotevents/programs";
 import type { Division, EventRef, Team } from "@/lib/robotevents/schemas";
@@ -71,6 +72,12 @@ export function EventScoutView({
   // Search filter: matches team number, name, organization.
   const [search, setSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
+
+  // Default to the matches tab when we know who "us" is — that's what the
+  // user usually wants to see at an event.
+  const [tab, setTab] = useState<"matches" | "teams">(() =>
+    myTeam ? "matches" : "teams",
+  );
 
   const allCountries = useMemo(() => {
     const set = new Set<string>();
@@ -278,9 +285,9 @@ export function EventScoutView({
       ? `~${Math.ceil(etaSeconds / 60)} min left`
       : `~${etaSeconds}s left`;
 
-  // Back returns to the events list. /scout remembers the last team via
-  // localStorage so we don't need to thread the team through the URL.
-  const homeHref = "/scout";
+  // Back returns to the events list. The home page remembers the last team
+  // via localStorage so we don't need to thread the team through the URL.
+  const homeHref = "/";
 
   return (
     <div className="space-y-5">
@@ -355,24 +362,50 @@ export function EventScoutView({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_220px]">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search team, name, org…"
-            spellCheck={false}
-            className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-        <CountrySelect
-          countries={allCountries}
-          value={countryFilter}
-          onChange={setCountryFilter}
+      <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 p-1">
+        <TabButton
+          active={tab === "matches"}
+          onClick={() => setTab("matches")}
+          label="My matches"
+          disabled={!myTeamObj}
+        />
+        <TabButton
+          active={tab === "teams"}
+          onClick={() => setTab("teams")}
+          label="Teams"
         />
       </div>
+
+      {tab === "matches" && myTeamObj ? (
+        <EventMatches
+          eventId={event.id}
+          myTeamId={myTeamObj.id}
+          myTeamNumber={myTeamObj.number}
+          teamNames={teamNamesMap}
+          scoutedById={scoutedById}
+        />
+      ) : null}
+
+      {tab === "teams" && (
+        <>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_220px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search team, name, org…"
+                spellCheck={false}
+                className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+            <CountrySelect
+              countries={allCountries}
+              value={countryFilter}
+              onChange={setCountryFilter}
+            />
+          </div>
 
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -506,37 +539,58 @@ export function EventScoutView({
         )}
       </div>
 
-      {isEventOngoing(event) && myTeamObj && (
-        <UpcomingMatches
-          eventId={event.id}
-          myTeamId={myTeamObj.id}
-          myTeamNumber={myTeamObj.number}
-          teamNames={teamNamesMap}
-          scoutedById={scoutedById}
-        />
-      )}
-
-      {rows.length > 0 ? (
-        <RankingTable
-          rows={rows}
-          programCode={programCode}
-          highlightTeam={myTeam}
-          onRowExpand={scoutOne}
-          onForceRefresh={(id: number) => scoutOne(id, true)}
-          scoutingIds={scoutingIds}
-          failedIds={failedIds}
-          seasonId={seasonId ?? undefined}
-          eventId={event.id}
-          eventTeamNames={teamNamesMap}
-        />
-      ) : (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          {teams.length === 0
-            ? "No teams registered for this event yet."
-            : "No teams match your current filter."}
-        </div>
+          {rows.length > 0 ? (
+            <RankingTable
+              rows={rows}
+              programCode={programCode}
+              highlightTeam={myTeam}
+              onRowExpand={scoutOne}
+              onForceRefresh={(id: number) => scoutOne(id, true)}
+              scoutingIds={scoutingIds}
+              failedIds={failedIds}
+              seasonId={seasonId ?? undefined}
+              eventId={event.id}
+              eventTeamNames={teamNamesMap}
+            />
+          ) : (
+            <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              {teams.length === 0
+                ? "No teams registered for this event yet."
+                : "No teams match your current filter."}
+            </div>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+  disabled = false,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors",
+        disabled && "cursor-not-allowed opacity-50",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -616,15 +670,6 @@ function EventHeader({
       )}
     </div>
   );
-}
-
-function isEventOngoing(event: EventRef): boolean {
-  if (event.ongoing === true) return true;
-  const now = Date.now();
-  const start = event.start ? new Date(event.start).getTime() : null;
-  const end = event.end ? new Date(event.end).getTime() : null;
-  if (start == null || end == null) return false;
-  return start <= now && now <= end;
 }
 
 function formatRange(start: Date, end: Date | null): string {

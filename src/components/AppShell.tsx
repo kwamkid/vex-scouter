@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { APP_NAME, NAV_ITEMS, isNavItemActive } from "@/lib/nav";
+import { APP_NAME, APP_TAGLINE, NAV_ITEMS, isNavItemActive } from "@/lib/nav";
 
 const MAX_WIDTHS = {
   "2xl": "max-w-2xl",
@@ -28,8 +28,24 @@ export function AppShell({
       <main className={cn("mx-auto w-full px-4 py-6 sm:px-6 sm:py-8", MAX_WIDTHS[maxWidth])}>
         {children}
       </main>
-      <footer className="mt-8 pb-8 text-center text-[11px] text-muted-foreground">
-        Data from RobotEvents API · Not affiliated with REC Foundation
+      <footer className="mt-10 border-t border-border/60">
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-foreground">
+                <span className="text-primary">VEX</span>{" "}
+                <span>Match</span>{" "}
+                <span className="text-brand-orange">Scouter</span>
+              </div>
+              <p className="max-w-xl text-xs text-muted-foreground leading-relaxed">
+                {`${APP_TAGLINE} Look up your team's events, review match history with W-L breakdown, and pre-scout opponents' teamwork rank, skills score, and W-L-T at the event you're heading into.`}
+              </p>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Data from RobotEvents API · Not affiliated with REC Foundation
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   );
@@ -64,8 +80,8 @@ function TopBar() {
           <div className="min-w-0 hidden sm:block">
             <div className="text-sm font-bold tracking-tight leading-tight">
               <span className="text-primary">VEX</span>{" "}
-              <span className="text-foreground">Worlds</span>{" "}
-              <span className="text-brand-orange">Match Scout</span>
+              <span className="text-foreground">Match</span>{" "}
+              <span className="text-brand-orange">Scouter</span>
             </div>
             <div className="text-[10px] text-muted-foreground leading-tight">
               {APP_NAME}

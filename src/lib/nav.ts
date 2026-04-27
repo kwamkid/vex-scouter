@@ -2,6 +2,7 @@ import {
   BarChart3,
   Calendar,
   ListPlus,
+  Star,
   User,
   type LucideIcon,
 } from "lucide-react";
@@ -18,8 +19,9 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Rankings", icon: BarChart3 },
-  { href: "/scout", label: "Events", icon: Calendar, activeFor: ["/events"] },
+  { href: "/", label: "Events", icon: Calendar, activeFor: ["/events", "/scout"] },
+  { href: "/rankings", label: "Rankings", icon: BarChart3 },
+  { href: "/watching", label: "Watching", icon: Star },
   { href: "/profile", label: "My Team", icon: User },
   { href: "/manual", label: "Manual", icon: ListPlus, activeFor: ["/compare"] },
 ];
@@ -34,5 +36,5 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
   );
 }
 
-export const APP_NAME = "VEX Worlds Match Scout";
-export const APP_TAGLINE = "Skills ranking from scouted data";
+export const APP_NAME = "VEX Match Scouter";
+export const APP_TAGLINE = "Scout opponents, study match history, and prep for your division.";

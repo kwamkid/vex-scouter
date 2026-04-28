@@ -27,6 +27,7 @@ export function TeamMatchHistory({
   compact?: boolean;
 }) {
   const [matches, setMatches] = useState<Match[] | null>(null);
+  const [fetchedNames, setFetchedNames] = useState<TeamInfoMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,6 +41,14 @@ export function TeamMatchHistory({
         if (cancelled) return;
         if (!r.ok) throw new Error(json.error ?? "failed to load matches");
         setMatches(json.matches ?? []);
+        const info = json.teamInfo as
+          | Record<string, { number: string; name: string | null }>
+          | undefined;
+        if (info) {
+          const m: TeamInfoMap = new Map();
+          for (const [k, v] of Object.entries(info)) m.set(Number(k), v);
+          setFetchedNames(m);
+        }
       })
       .catch((e) => {
         if (!cancelled) setError((e as Error).message);
@@ -51,6 +60,10 @@ export function TeamMatchHistory({
       cancelled = true;
     };
   }, [eventId, teamId]);
+
+  // Caller-provided names take precedence; fall back to the event-team map
+  // we fetched from the API.
+  const effectiveNames = teamNames ?? fetchedNames ?? undefined;
 
   if (loading) {
     return (
@@ -83,9 +96,11 @@ export function TeamMatchHistory({
       a.matchnum - b.matchnum,
   );
 
+  const cooperative = sorted.length > 0 && sorted.every(isCooperativeMatch);
   const wins = sorted.filter((m) => teamOutcome(m, teamId) === "W").length;
   const losses = sorted.filter((m) => teamOutcome(m, teamId) === "L").length;
   const ties = sorted.filter((m) => teamOutcome(m, teamId) === "T").length;
+  const playedCount = sorted.filter((m) => m.scored === true || cooperativeScore(m) != null).length;
 
   return (
     <div className={cn("space-y-2", compact && "space-y-1.5")}>
@@ -94,10 +109,18 @@ export function TeamMatchHistory({
           <span className="font-mono text-foreground">{sorted.length}</span>{" "}
           matches
         </span>
-        <span className="font-mono text-emerald-600 dark:text-emerald-400">{wins} W</span>
-        <span className="font-mono text-destructive/80">{losses} L</span>
-        {ties > 0 && (
-          <span className="font-mono text-muted-foreground">{ties} T</span>
+        {cooperative ? (
+          <span className="font-mono text-brand-orange">
+            {playedCount} played
+          </span>
+        ) : (
+          <>
+            <span className="font-mono text-emerald-600 dark:text-emerald-400">{wins} W</span>
+            <span className="font-mono text-destructive/80">{losses} L</span>
+            {ties > 0 && (
+              <span className="font-mono text-muted-foreground">{ties} T</span>
+            )}
+          </>
         )}
       </div>
       <ul className="flex flex-col rounded-md border border-border/60 overflow-hidden">
@@ -107,7 +130,7 @@ export function TeamMatchHistory({
             match={m}
             teamId={teamId}
             teamNumber={teamNumber}
-            teamNames={teamNames}
+            teamNames={effectiveNames}
           />
         ))}
       </ul>
@@ -126,7 +149,11 @@ function MatchCard({
   teamNumber: string;
   teamNames?: TeamInfoMap;
 }) {
-  const outcome = teamOutcome(match, teamId);
+  const cooperative = isCooperativeMatch(match);
+  const rawOutcome = teamOutcome(match, teamId);
+  // VIQRC: alliances cooperate, so suppress W/L/Tie even when the API reports
+  // matching scores on both sides.
+  const outcome = cooperative ? null : rawOutcome;
   // Fixed columns: blue alliance always left, red always right.
   const blueAlliance = match.alliances.find(
     (a) => a.color?.toLowerCase() === "blue",
@@ -142,33 +169,63 @@ function MatchCard({
   const oppScore = oppAlliance?.score ?? 0;
   const blueScore = blueAlliance?.score ?? 0;
   const redScore = redAlliance?.score ?? 0;
-  const played = outcome != null;
-  const blueWon = played && blueScore > redScore;
-  const redWon = played && redScore > blueScore;
+  const played = rawOutcome != null || cooperativeScore(match) != null;
+  const blueWon = !cooperative && played && blueScore > redScore;
+  const redWon = !cooperative && played && redScore > blueScore;
 
   return (
-    <li className="grid grid-cols-[3rem_1fr_2rem_1fr_5rem] items-center gap-2 px-2 py-1.5 border-b border-border/50 last:border-b-0">
-      <span className="font-mono text-xs font-semibold text-foreground">
-        {matchLabel(match)}
-      </span>
-      <AllianceCell
-        alliance={blueAlliance}
-        myTeamNumber={teamNumber}
-        teamNames={teamNames}
-        winner={blueWon}
-        loser={redWon}
-      />
-      <span className="text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-        vs
-      </span>
-      <AllianceCell
-        alliance={redAlliance}
-        myTeamNumber={teamNumber}
-        teamNames={teamNames}
-        winner={redWon}
-        loser={blueWon}
-      />
-      <OutcomeBadge outcome={outcome} myScore={myScore} oppScore={oppScore} />
+    <li className="border-b border-border/50 last:border-b-0">
+      <div
+        className={cn(
+          "flex flex-col gap-2 px-3 py-2.5",
+          "lg:grid lg:grid-cols-[3rem_1fr_2rem_1fr_5rem] lg:items-center lg:gap-2 lg:px-2 lg:py-1.5",
+        )}
+      >
+        <div className="flex items-center justify-between gap-3 lg:contents">
+          <span className="font-mono text-xs font-semibold text-foreground">
+            {matchLabel(match)}
+          </span>
+          <div className="lg:hidden">
+            <OutcomeBadge
+              outcome={outcome}
+              myScore={myScore}
+              oppScore={oppScore}
+              cooperative={cooperative}
+              played={played}
+              sharedScore={cooperative ? blueScore || redScore : 0}
+            />
+          </div>
+        </div>
+        <AllianceCell
+          alliance={blueAlliance}
+          myTeamNumber={teamNumber}
+          teamNames={teamNames}
+          winner={blueWon}
+          loser={redWon}
+          hideScore={cooperative}
+        />
+        <span className="hidden text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 lg:block">
+          {cooperative ? "&" : "vs"}
+        </span>
+        <AllianceCell
+          alliance={redAlliance}
+          myTeamNumber={teamNumber}
+          teamNames={teamNames}
+          winner={redWon}
+          loser={blueWon}
+          hideScore={cooperative}
+        />
+        <div className="hidden lg:block">
+          <OutcomeBadge
+            outcome={outcome}
+            myScore={myScore}
+            oppScore={oppScore}
+            cooperative={cooperative}
+            played={played}
+            sharedScore={cooperative ? blueScore || redScore : 0}
+          />
+        </div>
+      </div>
     </li>
   );
 }
@@ -177,11 +234,37 @@ function OutcomeBadge({
   outcome,
   myScore,
   oppScore,
+  cooperative = false,
+  played = false,
+  sharedScore = 0,
 }: {
   outcome: "W" | "L" | "T" | null;
   myScore: number;
   oppScore: number;
+  /** VIQRC: show shared score instead of W/L/Tie. */
+  cooperative?: boolean;
+  played?: boolean;
+  sharedScore?: number;
 }) {
+  if (cooperative) {
+    if (!played) {
+      return (
+        <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground/60">
+          Pending
+        </span>
+      );
+    }
+    return (
+      <div className="flex flex-col items-end text-[11px] text-brand-orange">
+        <span className="font-semibold uppercase tracking-wide text-[10px]">
+          Played
+        </span>
+        <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+          {sharedScore || "—"}
+        </span>
+      </div>
+    );
+  }
   if (outcome == null) {
     return (
       <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground/60">
@@ -214,6 +297,7 @@ function AllianceCell({
   teamNames,
   winner = false,
   loser = false,
+  hideScore = false,
 }: {
   alliance?: MatchAlliance;
   myTeamNumber: string;
@@ -221,6 +305,8 @@ function AllianceCell({
   mine?: boolean;
   winner?: boolean;
   loser?: boolean;
+  /** VIQRC: shared score is shown once in the outcome cell, not per side. */
+  hideScore?: boolean;
 }) {
   if (!alliance) {
     return (
@@ -258,7 +344,7 @@ function AllianceCell({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-2 min-w-0 rounded-md",
+        "flex items-center gap-2 px-2 py-2 min-w-0 rounded-md sm:px-3",
         bgClass,
         loser && "opacity-70",
       )}
@@ -277,7 +363,7 @@ function AllianceCell({
             >
               <span
                 className={cn(
-                  "font-mono shrink-0 w-16",
+                  "font-mono shrink-0",
                   isMe
                     ? "font-bold text-primary"
                     : "text-foreground",
@@ -300,16 +386,35 @@ function AllianceCell({
           );
         })}
       </ul>
-      <span
-        className={cn(
-          "ml-2 shrink-0 font-mono text-base tabular-nums self-center",
-          winner ? "font-bold text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {alliance.score ?? "—"}
-      </span>
+      {!hideScore && (
+        <span
+          className={cn(
+            "ml-1 shrink-0 font-mono text-base tabular-nums self-center sm:ml-2",
+            winner ? "font-bold text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {alliance.score ?? "—"}
+        </span>
+      )}
     </div>
   );
+}
+
+// VIQRC matches are cooperative: 2 teams share 1 score, no opposing alliance.
+// In RobotEvents, VIQRC Mix & Match still returns red/blue alliances — but
+// each alliance holds only 1 team and both alliances post the same shared
+// score. V5RC always has ≥2 teams per alliance. Discriminate by team count.
+function isCooperativeMatch(match: Match): boolean {
+  if (match.alliances.length === 0) return false;
+  if (match.alliances.length === 1) return true;
+  return match.alliances.every((a) => (a.teams?.length ?? 0) <= 1);
+}
+
+function cooperativeScore(match: Match): number | null {
+  for (const a of match.alliances) {
+    if (a.score != null) return a.score;
+  }
+  return null;
 }
 
 // Determine W/L/T from alliance scores. We don't rely on the `scored` flag

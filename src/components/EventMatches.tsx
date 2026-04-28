@@ -159,7 +159,7 @@ export function EventMatches({
     return () => ctrl.abort();
   }, [eventId, myTeamId, refreshTick]);
 
-  const { upcoming, past, myStat, eventStarted } = useMemo(() => {
+  const { upcoming, past, myStat, eventStarted, cooperativeEvent } = useMemo(() => {
     const all = matches ?? [];
     const u: Match[] = [];
     const p: Match[] = [];
@@ -171,12 +171,16 @@ export function EventMatches({
       m.round * 10000 + (m.instance ?? 0) * 1000 + m.matchnum;
     u.sort((a, b) => sortKey(a) - sortKey(b));
     p.sort((a, b) => sortKey(a) - sortKey(b));
+    // VIQRC teamwork has no red-vs-blue split; if no match in the event has
+    // both colors, treat the whole event as cooperative.
+    const coop = all.length > 0 && all.every(isCooperativeMatch);
     return {
       upcoming: u,
       past: p,
       myStat: pickStat(myTeamId, stats, scoutedById),
       // Event "started" means at least one team has rankings/skills logged.
       eventStarted: stats.size > 0,
+      cooperativeEvent: coop,
     };
   }, [matches, stats, myTeamId, scoutedById]);
 
@@ -250,6 +254,7 @@ export function EventMatches({
           teamNumber={myTeamNumber}
           stat={myStat}
           skillsParticipants={countSkillsParticipants(stats)}
+          cooperative={cooperativeEvent}
         />
       )}
 
@@ -284,10 +289,13 @@ function MyTeamSummary({
   teamNumber,
   stat,
   skillsParticipants,
+  cooperative = false,
 }: {
   teamNumber: string;
   stat: DisplayStat;
   skillsParticipants: number;
+  /** VIQRC events: hide W-L-T/WP/AP/AWP — they don't apply to teamwork. */
+  cooperative?: boolean;
 }) {
   const eventScope = stat.source === "event";
   return (
@@ -312,40 +320,49 @@ function MyTeamSummary({
           <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Teamwork
           </h4>
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+          <div
+            className={cn(
+              "grid gap-3",
+              cooperative ? "grid-cols-1" : "grid-cols-3 sm:grid-cols-5",
+            )}
+          >
             <Metric
               label={eventScope ? "Rank" : "Best Rank"}
               tip={
                 eventScope
-                  ? "Current rank in your division at this event, ordered by WP → AP → SP."
+                  ? cooperative
+                    ? "Current teamwork rank in your division at this event."
+                    : "Current rank in your division at this event, ordered by WP → AP → SP."
                   : "Lowest (best) division rank you finished at any event this season."
               }
               value={stat.rank != null ? `#${stat.rank}` : "—"}
             />
-            <Metric
-              label="W-L-T"
-              tip="Wins · Losses · Ties at this event."
-              value={
-                eventScope
-                  ? `${stat.wins}-${stat.losses}-${stat.ties}`
-                  : "—"
-              }
-            />
-            {eventScope && (
+            {!cooperative && (
+              <Metric
+                label="W-L-T"
+                tip="Wins · Losses · Ties at this event."
+                value={
+                  eventScope
+                    ? `${stat.wins}-${stat.losses}-${stat.ties}`
+                    : "—"
+                }
+              />
+            )}
+            {!cooperative && eventScope && (
               <Metric
                 label="WP"
                 tip="Win Points: 2 per win, 1 per tie. Primary tiebreaker for division rank."
                 value={stat.wp || "—"}
               />
             )}
-            {eventScope && (
+            {!cooperative && eventScope && (
               <Metric
                 label="AP"
                 tip="Autonomous Points: 1 per match where your alliance won the autonomous bonus."
                 value={stat.ap || "—"}
               />
             )}
-            {eventScope && stat.awp != null && (
+            {!cooperative && eventScope && stat.awp != null && (
               <Metric
                 label="AWP"
                 tip="Autonomous Win Point: bonus WP awarded when your alliance completes the autonomous win requirements."
@@ -510,54 +527,91 @@ function MatchRow({
   const blueScore = blueAlliance?.score ?? 0;
   const redScore = redAlliance?.score ?? 0;
   const played = isPlayed(match);
-  const outcome: "W" | "L" | "T" | null = played
+  const cooperative = isCooperativeMatch(match);
+  // VIQRC matches: both alliances cooperate for a shared score, so there is
+  // no winner/loser/tie — even when scores happen to differ on the wire.
+  const outcome: "W" | "L" | "T" | null = cooperative
+    ? null
+    : played
     ? myScore > oppScore
       ? "W"
       : myScore < oppScore
         ? "L"
         : "T"
     : null;
-  const blueWon = played && blueScore > redScore;
-  const redWon = played && redScore > blueScore;
+  const blueWon = !cooperative && played && blueScore > redScore;
+  const redWon = !cooperative && played && redScore > blueScore;
   const scheduled = match.scheduled ? new Date(match.scheduled) : null;
 
   return (
-    <li className="grid grid-cols-[5rem_1fr_auto_1fr_5rem] items-center gap-2 px-2 py-1.5 border-b border-border/50 last:border-b-0">
-      <div className="flex flex-col gap-0.5">
-        <span className="font-mono text-xs font-semibold text-foreground">
-          {matchLabel(match)}
+    <li className="border-b border-border/50 last:border-b-0">
+      <div
+        className={cn(
+          "flex flex-col gap-2 px-3 py-2.5",
+          // Stack on phones/tablets; switch to the 5-column grid only when we
+          // have real desktop room (lg = 1024px). Below that the cell content
+          // (team list + stat pill + score) gets too cramped.
+          "lg:grid lg:grid-cols-[5rem_1fr_auto_1fr_5rem] lg:items-center lg:gap-2 lg:px-2 lg:py-1.5",
+        )}
+      >
+        {/* Header: match label + schedule + outcome (outcome only on mobile here). */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="font-mono text-xs font-semibold text-foreground">
+              {matchLabel(match)}
+            </span>
+            {scheduled && <ScheduledStamp date={scheduled} />}
+          </div>
+          <div className="lg:hidden">
+            <OutcomeCell
+              outcome={outcome}
+              myScore={myScore}
+              oppScore={oppScore}
+              played={played}
+              cooperative={cooperative}
+              sharedScore={cooperative ? blueScore || redScore : 0}
+            />
+          </div>
+        </div>
+
+        <AllianceCell
+          alliance={blueAlliance}
+          myTeamId={myTeamId}
+          myTeamNumber={myTeamNumber}
+          teamNames={teamNames}
+          stats={stats}
+          scoutedById={scoutedById}
+          winner={blueWon}
+          loser={redWon}
+          cooperative={cooperative}
+          hideScore={cooperative}
+        />
+        <span className="hidden text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 lg:block">
+          {cooperative ? "&" : "vs"}
         </span>
-        {scheduled && <ScheduledStamp date={scheduled} />}
+        <AllianceCell
+          alliance={redAlliance}
+          myTeamId={myTeamId}
+          myTeamNumber={myTeamNumber}
+          teamNames={teamNames}
+          stats={stats}
+          scoutedById={scoutedById}
+          winner={redWon}
+          loser={blueWon}
+          cooperative={cooperative}
+          hideScore={cooperative}
+        />
+        <div className="hidden lg:block">
+          <OutcomeCell
+            outcome={outcome}
+            myScore={myScore}
+            oppScore={oppScore}
+            played={played}
+            cooperative={cooperative}
+            sharedScore={cooperative ? blueScore || redScore : 0}
+          />
+        </div>
       </div>
-      <AllianceCell
-        alliance={blueAlliance}
-        myTeamId={myTeamId}
-        myTeamNumber={myTeamNumber}
-        teamNames={teamNames}
-        stats={stats}
-        scoutedById={scoutedById}
-        winner={blueWon}
-        loser={redWon}
-      />
-      <span className="text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-        vs
-      </span>
-      <AllianceCell
-        alliance={redAlliance}
-        myTeamId={myTeamId}
-        myTeamNumber={myTeamNumber}
-        teamNames={teamNames}
-        stats={stats}
-        scoutedById={scoutedById}
-        winner={redWon}
-        loser={blueWon}
-      />
-      <OutcomeCell
-        outcome={outcome}
-        myScore={myScore}
-        oppScore={oppScore}
-        played={played}
-      />
     </li>
   );
 }
@@ -571,6 +625,8 @@ function AllianceCell({
   scoutedById,
   winner = false,
   loser = false,
+  cooperative = false,
+  hideScore = false,
 }: {
   alliance?: MatchAlliance;
   myTeamId: number;
@@ -580,6 +636,10 @@ function AllianceCell({
   scoutedById?: Map<number, TeamRow>;
   winner?: boolean;
   loser?: boolean;
+  /** VIQRC: skip W-L-T pill rendering and W/L tinting. */
+  cooperative?: boolean;
+  /** VIQRC: shared score is shown once in the outcome cell, not per side. */
+  hideScore?: boolean;
 }) {
   if (!alliance) {
     return <div className="px-3 py-2 text-xs text-muted-foreground/60">—</div>;
@@ -594,6 +654,8 @@ function AllianceCell({
 
   // Background tells the story: strong alliance color when that side won,
   // dimmed gray when it lost, light alliance tint while the match is pending.
+  // For cooperative matches we never tint as winner/loser — the side keeps
+  // the light alliance color so red/blue pairing is still visible.
   let bgClass = "";
   if (winner) {
     bgClass =
@@ -612,18 +674,20 @@ function AllianceCell({
           ? "bg-blue-500/5"
           : "";
   }
+  const teamList = alliance.teams ?? [];
+  const displayScore = alliance.score ?? null;
 
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-2 min-w-0 rounded-md",
+        "flex items-center gap-2 px-2 py-2 min-w-0 rounded-md sm:px-3",
         bgClass,
         loser && "opacity-70",
       )}
     >
       <span className={cn("h-2 w-2 shrink-0 rounded-full", dotClass)} />
-      <ul className="flex flex-1 min-w-0 flex-col gap-0.5">
-        {(alliance.teams ?? []).map((t) => {
+      <ul className="flex flex-1 min-w-0 flex-col gap-1">
+        {teamList.map((t) => {
           const info = teamNames?.get(t.team.id);
           const number = info?.number ?? t.team.name ?? "—";
           const name = info?.name ?? null;
@@ -635,47 +699,57 @@ function AllianceCell({
           return (
             <li
               key={t.team.id}
-              className="flex min-w-0 items-baseline gap-2 text-[11px]"
+              className="flex min-w-0 flex-col gap-0.5 text-[11px]"
             >
-              <span
-                className={cn(
-                  "font-mono shrink-0 w-16",
-                  isMe ? "font-bold text-primary" : "text-foreground",
-                )}
-              >
-                {isMe ? "▸" : ""}
-                {number}
-              </span>
-              {name && (
+              <div className="flex min-w-0 items-baseline gap-1.5">
                 <span
                   className={cn(
-                    "truncate text-[11px] flex-1 min-w-0",
-                    isMe
-                      ? "text-foreground font-semibold"
-                      : "text-muted-foreground",
+                    "font-mono shrink-0",
+                    isMe ? "font-bold text-primary" : "text-foreground",
                   )}
                 >
-                  {name}
+                  {isMe ? "▸" : ""}
+                  {number}
                 </span>
-              )}
-              <TeamStatPill stat={teamStat} />
+                {name && (
+                  <span
+                    className={cn(
+                      "truncate flex-1 min-w-0",
+                      isMe
+                        ? "text-foreground font-semibold"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {name}
+                  </span>
+                )}
+              </div>
+              <TeamStatPill stat={teamStat} cooperative={cooperative} />
             </li>
           );
         })}
       </ul>
-      <span
-        className={cn(
-          "ml-2 shrink-0 font-mono text-base tabular-nums self-center",
-          winner ? "font-bold text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {alliance.score ?? "—"}
-      </span>
+      {!hideScore && (
+        <span
+          className={cn(
+            "ml-1 shrink-0 font-mono text-base tabular-nums self-center sm:ml-2",
+            winner ? "font-bold text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {displayScore ?? "—"}
+        </span>
+      )}
     </div>
   );
 }
 
-function TeamStatPill({ stat }: { stat: DisplayStat | null }) {
+function TeamStatPill({
+  stat,
+  cooperative = false,
+}: {
+  stat: DisplayStat | null;
+  cooperative?: boolean;
+}) {
   if (!stat) {
     return (
       <span className="shrink-0 text-[10px] italic text-muted-foreground/50">
@@ -701,11 +775,13 @@ function TeamStatPill({ stat }: { stat: DisplayStat | null }) {
           <span className="ml-0.5">#{stat.rank}</span>
         </span>
       )}
-      {isEvent && (stat.wins > 0 || stat.losses > 0 || stat.ties > 0) && (
-        <span title="Wins-Losses-Ties at this event">
-          {stat.wins}-{stat.losses}-{stat.ties}
-        </span>
-      )}
+      {!cooperative &&
+        isEvent &&
+        (stat.wins > 0 || stat.losses > 0 || stat.ties > 0) && (
+          <span title="Wins-Losses-Ties at this event">
+            {stat.wins}-{stat.losses}-{stat.ties}
+          </span>
+        )}
       {stat.skillsScore != null && (
         <span title="Skills score (prog + driver)">
           <span className="text-muted-foreground">SK</span>
@@ -721,17 +797,34 @@ function OutcomeCell({
   myScore,
   oppScore,
   played,
+  cooperative = false,
+  sharedScore = 0,
 }: {
   outcome: "W" | "L" | "T" | null;
   myScore: number;
   oppScore: number;
   played: boolean;
+  /** VIQRC: skip W/L/Tie — show just the shared cooperative score. */
+  cooperative?: boolean;
+  sharedScore?: number;
 }) {
   if (!played) {
     return (
       <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground/60">
         Upcoming
       </span>
+    );
+  }
+  if (cooperative) {
+    return (
+      <div className="flex flex-col items-end text-[11px] text-brand-orange">
+        <span className="font-semibold uppercase tracking-wide text-[10px]">
+          Played
+        </span>
+        <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+          {sharedScore || "—"}
+        </span>
+      </div>
     );
   }
   if (outcome == null) {
@@ -766,6 +859,18 @@ function isPlayed(match: Match): boolean {
   }
   return false;
 }
+
+// VIQRC matches are cooperative: 2 teams share 1 score, no opposing alliance.
+// In RobotEvents, VIQRC Mix & Match still returns red/blue alliances — but
+// each alliance holds only 1 team and both alliances post the same shared
+// score. V5RC/VURC/VAIRC always have ≥2 teams per alliance. Discriminate by
+// team count rather than color presence.
+function isCooperativeMatch(match: Match): boolean {
+  if (match.alliances.length === 0) return false;
+  if (match.alliances.length === 1) return true;
+  return match.alliances.every((a) => (a.teams?.length ?? 0) <= 1);
+}
+
 
 function matchLabel(m: Match): string {
   const prefix =

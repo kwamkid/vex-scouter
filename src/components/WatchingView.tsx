@@ -220,55 +220,76 @@ function WatchRow({
   return (
     <li
       className={cn(
-        "flex items-center gap-3 px-3 py-2.5 transition-colors",
+        "transition-colors",
         clickable && "cursor-pointer hover:bg-muted/40",
       )}
       onClick={() => clickable && onOpen()}
     >
-      <Star className="h-3.5 w-3.5 shrink-0 fill-brand-orange text-brand-orange" />
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="font-mono text-sm font-bold text-primary">
-            {team.teamNumber}
-          </span>
-          <span className="truncate text-sm text-foreground">
-            {cached?.teamName ?? team.teamName ?? "—"}
-          </span>
-        </div>
-        {cached && (
-          <div className="text-[11px] text-muted-foreground truncate">
-            {[cached.organization, cached.country].filter(Boolean).join(" · ")}
+      {/* Mobile: vertical stack so stats can wrap. Desktop: single row. */}
+      <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+        <div className="flex items-start gap-3 min-w-0 sm:flex-1">
+          <Star className="h-3.5 w-3.5 shrink-0 mt-0.5 fill-brand-orange text-brand-orange" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="font-mono text-sm font-bold text-primary">
+                {team.teamNumber}
+              </span>
+              <span className="truncate text-sm text-foreground">
+                {cached?.teamName ?? team.teamName ?? "—"}
+              </span>
+            </div>
+            {cached && (
+              <div className="text-[11px] text-muted-foreground truncate">
+                {[cached.organization, cached.country]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-
-      {loading ? (
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-      ) : cached ? (
-        <div className="flex shrink-0 items-center gap-3 text-[11px]">
-          <Stat label="Score" value={cached.skillsScore ?? "—"} />
-          <Stat label="Rank" value={cached.skillsWorldRank ?? "—"} />
-          <Stat label="Awards" value={cached.awardCount || "—"} />
+          {/* Remove button on the right of the header on mobile, end of row on desktop. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            title="Remove from watchlist"
+            className="shrink-0 sm:hidden"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
         </div>
-      ) : (
-        <span className="shrink-0 text-[10px] italic text-muted-foreground/60">
-          not scouted
-        </span>
-      )}
 
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-        title="Remove from watchlist"
-        className="shrink-0"
-      >
-        <X className="h-3.5 w-3.5" />
-      </Button>
+        <div className="flex items-center justify-between gap-3 pl-7 sm:pl-0 sm:justify-end">
+          {loading ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+          ) : cached ? (
+            <div className="flex shrink-0 items-center gap-3 text-[11px]">
+              <Stat label="Score" value={cached.skillsScore ?? "—"} />
+              <Stat label="Rank" value={cached.skillsWorldRank ?? "—"} />
+              <Stat label="Awards" value={cached.awardCount || "—"} />
+            </div>
+          ) : (
+            <span className="shrink-0 text-[10px] italic text-muted-foreground/60">
+              not scouted
+            </span>
+          )}
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            title="Remove from watchlist"
+            className="hidden shrink-0 sm:inline-flex"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
     </li>
   );
 }

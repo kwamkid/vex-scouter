@@ -10,11 +10,11 @@ const kv = createClient({
 const TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 function key(teamId: number, seasonId: number): string {
-  return `scout:${seasonId}:${teamId}`;
+  return `vex-hub:team:${seasonId}:${teamId}`;
 }
 
 function allKey(seasonId: number): string {
-  return `scout-index:${seasonId}`;
+  return `vex-hub:team-index:${seasonId}`;
 }
 
 // ---------------------------------------------------------------------------

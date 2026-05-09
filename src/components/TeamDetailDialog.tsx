@@ -23,6 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Stat } from "@/components/ui/stat";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { TeamMatchHistory, type TeamInfoMap } from "./TeamMatchHistory";
@@ -322,7 +323,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors",
+        "min-h-9 flex-1 truncate rounded-sm px-2 py-1.5 text-xs font-medium transition-colors sm:px-3",
         active
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground",
@@ -346,14 +347,7 @@ function SummaryStats({ row }: { row: TeamRow }) {
   return (
     <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-4 md:grid-cols-7">
       {stats.map((s) => (
-        <div key={s.label} className="flex flex-col">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {s.label}
-          </span>
-          <span className="font-mono text-sm font-semibold text-foreground">
-            {s.value}
-          </span>
-        </div>
+        <Stat key={s.label} label={s.label} value={s.value} />
       ))}
     </div>
   );

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Match, MatchAlliance } from "@/lib/robotevents/schemas";
+import { ErrorAlert } from "@/components/ui/error-alert";
+import { LoadingState } from "@/components/ui/loading-state";
 
 export type TeamInfo = { number: string; name: string | null };
 export type TeamInfoMap = Map<number, TeamInfo>;
@@ -66,20 +67,10 @@ export function TeamMatchHistory({
   const effectiveNames = teamNames ?? fetchedNames ?? undefined;
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Loading matches…
-      </div>
-    );
+    return <LoadingState label="Loading matches…" />;
   }
   if (error) {
-    return (
-      <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive">
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-        <span className="break-all">{error}</span>
-      </div>
-    );
+    return <ErrorAlert message={error} />;
   }
   if (!matches || matches.length === 0) {
     return (

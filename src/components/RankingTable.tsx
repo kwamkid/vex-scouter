@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Stat } from "@/components/ui/stat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -250,7 +251,7 @@ export function RankingTable({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `vex-scout-${sorted.length}-teams.csv`;
+    a.download = `vex-hub-${sorted.length}-teams.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -489,11 +490,11 @@ export function RankingTable({
 
             {!row.notFound && (
               <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-                <Stat
+                <Stat pill
                   label="Sk. Rank"
                   value={row.skillsWorldRank ?? "—"}
                 />
-                <Stat
+                <Stat pill
                   label="Prog/Drv"
                   value={
                     row.progScore !== null || row.driverScore !== null
@@ -502,11 +503,11 @@ export function RankingTable({
                   }
                   small
                 />
-                <Stat
+                <Stat pill
                   label="Awards"
                   value={row.awardCount > 0 ? row.awardCount : "—"}
                 />
-                <Stat
+                <Stat pill
                   label="Best"
                   value={row.bestEventRank ?? "—"}
                 />
@@ -537,7 +538,7 @@ export function RankingTable({
                 setPageSize(Number(e.target.value) as PageSizeOption);
                 setPage(0);
               }}
-              className="h-7 rounded border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="h-9 rounded border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {PAGE_SIZE_OPTIONS.map((n) => (
                 <option key={n} value={n}>
@@ -606,31 +607,6 @@ export function RankingTable({
   );
 }
 
-function Stat({
-  label,
-  value,
-  small,
-}: {
-  label: string;
-  value: React.ReactNode;
-  small?: boolean;
-}) {
-  return (
-    <div className="rounded-md bg-muted/40 px-2 py-1.5">
-      <div
-        className={cn(
-          "font-mono font-semibold text-foreground",
-          small ? "text-xs" : "text-sm",
-        )}
-      >
-        {value}
-      </div>
-      <div className="text-[9px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-    </div>
-  );
-}
 
 function esc(v: string | null | undefined): string {
   if (!v) return "";

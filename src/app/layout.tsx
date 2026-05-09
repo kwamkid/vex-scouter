@@ -14,9 +14,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VEX Match Scouter",
+  title: "VEX Hub",
   description:
-    "Scout opponents, study match history, and prep for your division — for V5RC and VIQRC teams.",
+    "All-in-one toolkit for VEX Robotics — events, rankings, awards, match scouting, eligibility checks, and more.",
   icons: {
     icon: "/logo.svg",
     shortcut: "/logo.svg",

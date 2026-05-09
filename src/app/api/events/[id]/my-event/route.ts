@@ -55,7 +55,7 @@ function ttlForStatus(status: ResultPayload["status"]): number {
 }
 
 function cacheKey(eventId: number, teamId: number): string {
-  return `my-event:${eventId}:${teamId}`;
+  return `vex-hub:my-event:${eventId}:${teamId}`;
 }
 
 export async function GET(

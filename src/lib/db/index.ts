@@ -4,7 +4,7 @@ import { mkdirSync } from "fs";
 import type { TeamRow } from "@/types";
 
 const DB_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DB_DIR, "vex-scout.db");
+const DB_PATH = path.join(DB_DIR, "vex-hub.db");
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Ensure data directory exists.

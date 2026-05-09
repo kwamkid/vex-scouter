@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, Star, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { useWatchlist, type WatchedTeam } from "@/lib/watchlist";
 import { findProgram } from "@/lib/robotevents/programs";
@@ -122,17 +123,19 @@ export function WatchingView() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-card p-8 text-center">
-        <Star className="mx-auto h-8 w-8 text-muted-foreground/50" />
-        <p className="mt-3 text-sm text-foreground">No teams watched yet.</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Open any team&apos;s detail and tap{" "}
-          <span className="inline-flex items-baseline gap-1 font-semibold">
-            <Star className="h-3 w-3 inline" /> Watch
-          </span>{" "}
-          to save them here.
-        </p>
-      </div>
+      <EmptyState
+        icon={<Star className="h-8 w-8" />}
+        title="No teams watched yet."
+        description={
+          <>
+            Open any team&apos;s detail and tap{" "}
+            <span className="inline-flex items-baseline gap-1 font-semibold">
+              <Star className="h-3 w-3 inline" /> Watch
+            </span>{" "}
+            to save them here.
+          </>
+        }
+      />
     );
   }
 
@@ -261,7 +264,7 @@ function WatchRow({
           </Button>
         </div>
 
-        <div className="flex items-center justify-between gap-3 pl-7 sm:pl-0 sm:justify-end">
+        <div className="flex items-center justify-between gap-3 sm:justify-end">
           {loading ? (
             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
           ) : cached ? (

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
-  AlertTriangle,
   Calendar,
   MapPin,
   Users,
@@ -17,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/ui/empty-state";
 import { RankingTable } from "@/components/RankingTable";
 import { EventMatches } from "@/components/EventMatches";
 import { PageHeader } from "@/components/AppShell";
@@ -416,7 +416,7 @@ export function EventScoutView({
               {scoutedCount}/{totalTeams} scouted
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -553,11 +553,13 @@ export function EventScoutView({
               eventTeamNames={teamNamesMap}
             />
           ) : (
-            <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-              {teams.length === 0
-                ? "No teams registered for this event yet."
-                : "No teams match your current filter."}
-            </div>
+            <EmptyState
+              title={
+                teams.length === 0
+                  ? "No teams registered for this event yet."
+                  : "No teams match your current filter."
+              }
+            />
           )}
         </>
       )}
@@ -684,11 +686,3 @@ function formatRange(start: Date, end: Date | null): string {
   return `${s} – ${e}`;
 }
 
-// Unused helper kept for future error UI.
-export function _errorBanner(_: { title: string; message: string }) {
-  return (
-    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:p-6">
-      <AlertTriangle className="h-5 w-5 text-destructive" />
-    </div>
-  );
-}

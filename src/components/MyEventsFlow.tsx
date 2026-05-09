@@ -10,11 +10,12 @@ import {
   ChevronRight,
   ChevronDown,
   History,
-  AlertTriangle,
   Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ErrorAlert } from "@/components/ui/error-alert";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { TeamMatchHistory } from "./TeamMatchHistory";
 import { useWatchlist } from "@/lib/watchlist";
@@ -165,12 +166,7 @@ export function MyEventsFlow() {
         </label>
       </form>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span className="break-all">{error}</span>
-        </div>
-      )}
+      {error && <ErrorAlert message={error} />}
 
       {result && (
         <EventsList
@@ -333,11 +329,15 @@ function EventsList({
       </div>
 
       {visible.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-          {bucket === "ongoing" && "No ongoing events right now."}
-          {bucket === "upcoming" && "No upcoming events scheduled."}
-          {bucket === "past" && "No past events this season."}
-        </div>
+        <EmptyState
+          title={
+            bucket === "ongoing"
+              ? "No ongoing events right now."
+              : bucket === "upcoming"
+                ? "No upcoming events scheduled."
+                : "No past events this season."
+          }
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {visible.map((e) => (

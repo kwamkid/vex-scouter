@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calendar, Info, RefreshCw } from "lucide-react";
+import { Calendar, Info, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { InfoTooltip } from "@/components/ui/tooltip";
+import { ErrorAlert } from "@/components/ui/error-alert";
+import { Stat } from "@/components/ui/stat";
 import { ProgressLoader } from "./ProgressLoader";
 import { consumeNdjson } from "@/lib/stream";
 import type { Match, MatchAlliance } from "@/lib/robotevents/schemas";
@@ -194,12 +195,7 @@ export function EventMatches({
     );
   }
   if (error) {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-        <span className="break-all">{error}</span>
-      </div>
-    );
+    return <ErrorAlert message={error} size="md" />;
   }
   if (!matches || matches.length === 0) {
     return (
@@ -326,9 +322,9 @@ function MyTeamSummary({
               cooperative ? "grid-cols-1" : "grid-cols-3 sm:grid-cols-5",
             )}
           >
-            <Metric
+            <Stat
               label={eventScope ? "Rank" : "Best Rank"}
-              tip={
+              tooltip={
                 eventScope
                   ? cooperative
                     ? "Current teamwork rank in your division at this event."
@@ -338,9 +334,9 @@ function MyTeamSummary({
               value={stat.rank != null ? `#${stat.rank}` : "—"}
             />
             {!cooperative && (
-              <Metric
+              <Stat
                 label="W-L-T"
-                tip="Wins · Losses · Ties at this event."
+                tooltip="Wins · Losses · Ties at this event."
                 value={
                   eventScope
                     ? `${stat.wins}-${stat.losses}-${stat.ties}`
@@ -349,23 +345,23 @@ function MyTeamSummary({
               />
             )}
             {!cooperative && eventScope && (
-              <Metric
+              <Stat
                 label="WP"
-                tip="Win Points: 2 per win, 1 per tie. Primary tiebreaker for division rank."
+                tooltip="Win Points: 2 per win, 1 per tie. Primary tiebreaker for division rank."
                 value={stat.wp || "—"}
               />
             )}
             {!cooperative && eventScope && (
-              <Metric
+              <Stat
                 label="AP"
-                tip="Autonomous Points: 1 per match where your alliance won the autonomous bonus."
+                tooltip="Autonomous Points: 1 per match where your alliance won the autonomous bonus."
                 value={stat.ap || "—"}
               />
             )}
             {!cooperative && eventScope && stat.awp != null && (
-              <Metric
+              <Stat
                 label="AWP"
-                tip="Autonomous Win Point: bonus WP awarded when your alliance completes the autonomous win requirements."
+                tooltip="Autonomous Win Point: bonus WP awarded when your alliance completes the autonomous win requirements."
                 value={stat.awp || "—"}
               />
             )}
@@ -378,9 +374,9 @@ function MyTeamSummary({
             Skills
           </h4>
           <div className="grid grid-cols-3 gap-3">
-            <Metric
+            <Stat
               label="Rank"
-              tip={
+              tooltip={
                 eventScope
                   ? `Your skills rank at this event${skillsParticipants > 0 ? ` (out of ${skillsParticipants} teams who ran skills)` : ""}.`
                   : "Best skills rank from any event this season."
@@ -393,14 +389,14 @@ function MyTeamSummary({
                   : "—"
               }
             />
-            <Metric
+            <Stat
               label="Score"
-              tip="Best programming + best driver run combined."
+              tooltip="Best programming + best driver run combined."
               value={stat.skillsScore != null ? stat.skillsScore : "—"}
             />
-            <Metric
+            <Stat
               label="Prog / Drv"
-              tip="Best programming run · Best driver run (separately)."
+              tooltip="Best programming run · Best driver run (separately)."
               value={
                 stat.progScore != null || stat.driverScore != null
                   ? `${stat.progScore ?? 0} / ${stat.driverScore ?? 0}`
@@ -422,34 +418,6 @@ function countSkillsParticipants(stats: EventStatsMap): number {
   return n;
 }
 
-function Metric({
-  label,
-  value,
-  tip,
-}: {
-  label: string;
-  value: React.ReactNode;
-  tip?: string;
-}) {
-  const labelNode = (
-    <span className="text-[10px] uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
-      {label}
-      {tip && <Info className="h-2.5 w-2.5 opacity-60" />}
-    </span>
-  );
-  return (
-    <div className="flex flex-col">
-      {tip ? (
-        <InfoTooltip content={tip}>{labelNode}</InfoTooltip>
-      ) : (
-        labelNode
-      )}
-      <span className="font-mono text-sm font-semibold text-foreground">
-        {value}
-      </span>
-    </div>
-  );
-}
 
 function MatchSection({
   title,

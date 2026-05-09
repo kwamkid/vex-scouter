@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Loader2, RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import {
   DIVISION_OPTIONS,
@@ -154,28 +156,27 @@ export function RankingsView() {
       </div>
 
       {pending && rows.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Loading rankings…
-        </div>
+        <LoadingState size="md" label="Loading rankings…" />
       ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            No scouted teams in database for{" "}
-            <span className="font-semibold">{division.label}</span>.
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Go to{" "}
-            <a href="/" className="text-primary hover:underline">
-              Events
-            </a>{" "}
-            and scout teams first.
-          </p>
-        </div>
+        <EmptyState
+          title={
+            <>
+              No scouted teams in database for{" "}
+              <span className="font-semibold">{division.label}</span>.
+            </>
+          }
+          description={
+            <>
+              Go to{" "}
+              <a href="/" className="text-primary hover:underline">
+                Events
+              </a>{" "}
+              and scout teams first.
+            </>
+          }
+        />
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          No teams match &quot;{search}&quot;.
-        </div>
+        <EmptyState title={`No teams match "${search}".`} />
       ) : (
         <RankingTable
           rows={filtered}

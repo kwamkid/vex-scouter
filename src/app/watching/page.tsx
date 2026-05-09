@@ -7,7 +7,7 @@ export default function WatchingPage() {
   return (
     <AppShell maxWidth="5xl">
       <PageHeader
-        title="Watching"
+        title="Favorites"
         subtitle="Teams you've starred — quick access to their season stats."
       />
       <WatchingView />

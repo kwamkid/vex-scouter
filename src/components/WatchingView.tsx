@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Star, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { useWatchlist, type WatchedTeam } from "@/lib/watchlist";
-import { findProgram } from "@/lib/robotevents/programs";
+import { findProgram, type ProgramCode } from "@/lib/robotevents/programs";
+import { leagueFromProgram } from "@/lib/league";
 import { TeamDetailDialog } from "./TeamDetailDialog";
 import type { TeamRow } from "@/types";
 import type { SeasonOption } from "./SeasonSelect";
@@ -170,12 +172,24 @@ export function WatchingView() {
                   t.teamId != null
                     ? (ctx?.rowsByTeamId.get(t.teamId) ?? null)
                     : null;
+                // Build a league route href so tapping the row jumps straight
+                // into the events flow with this team pre-filled and the
+                // current season pinned. Fallback to the dialog for VURC /
+                // VAIRC programs that don't have a top-level league route.
+                const league = leagueFromProgram(program as ProgramCode);
+                const params = new URLSearchParams();
+                params.set("team", t.teamNumber);
+                if (ctx?.season?.id) params.set("season", String(ctx.season.id));
+                const href = league
+                  ? `/${league}?${params.toString()}`
+                  : null;
                 return (
                   <WatchRow
                     key={`${program}::${t.teamNumber}`}
                     team={t}
                     cached={cached}
                     loading={loading && !cached}
+                    href={href}
                     onOpen={() => {
                       if (!cached) return;
                       setSelected({
@@ -210,26 +224,68 @@ function WatchRow({
   team,
   cached,
   loading,
+  href,
   onOpen,
   onRemove,
 }: {
   team: WatchedTeam;
   cached: TeamRow | null;
   loading: boolean;
+  /** League events href (e.g. /iq?team=2999B&season=...) when applicable. */
+  href: string | null;
   onOpen: () => void;
   onRemove: () => void;
 }) {
-  const clickable = !!cached;
+  // Prefer linking to the league events page (the user's "open this team"
+  // intent). Fall back to opening the detail dialog when we can't route to
+  // a league (VURC/VAIRC) and we have cached data to show.
+  const fallbackClickable = !href && !!cached;
+  const innerClass = cn(
+    "block transition-colors",
+    (href || fallbackClickable) && "cursor-pointer hover:bg-muted/40",
+  );
   return (
-    <li
-      className={cn(
-        "transition-colors",
-        clickable && "cursor-pointer hover:bg-muted/40",
+    <li>
+      {href ? (
+        <Link href={href} className={innerClass}>
+          <RowBody
+            team={team}
+            cached={cached}
+            loading={loading}
+            onRemove={onRemove}
+          />
+        </Link>
+      ) : (
+        <div
+          className={innerClass}
+          onClick={() => fallbackClickable && onOpen()}
+          role={fallbackClickable ? "button" : undefined}
+        >
+          <RowBody
+            team={team}
+            cached={cached}
+            loading={loading}
+            onRemove={onRemove}
+          />
+        </div>
       )}
-      onClick={() => clickable && onOpen()}
-    >
-      {/* Mobile: vertical stack so stats can wrap. Desktop: single row. */}
-      <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+    </li>
+  );
+}
+
+function RowBody({
+  team,
+  cached,
+  loading,
+  onRemove,
+}: {
+  team: WatchedTeam;
+  cached: TeamRow | null;
+  loading: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
         <div className="flex items-start gap-3 min-w-0 sm:flex-1">
           <Star className="h-3.5 w-3.5 shrink-0 mt-0.5 fill-brand-orange text-brand-orange" />
           <div className="min-w-0 flex-1">
@@ -254,6 +310,7 @@ function WatchRow({
             variant="ghost"
             size="sm"
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onRemove();
             }}
@@ -283,6 +340,7 @@ function WatchRow({
             variant="ghost"
             size="sm"
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onRemove();
             }}
@@ -292,8 +350,7 @@ function WatchRow({
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
-      </div>
-    </li>
+    </div>
   );
 }
 

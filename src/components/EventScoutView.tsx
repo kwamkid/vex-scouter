@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Loader2,
@@ -57,6 +58,49 @@ export function EventScoutView({
   const myDivisionId = myTeamObj
     ? teamDivisionMap[myTeamObj.id]
     : undefined;
+
+  // URL-driven "view as another team" mode. Tapping a team number in the
+  // match list pushes ?viewTeam=X; we resolve the team and use it in place
+  // of myTeamObj for the matches view. Empty/unset = view own team.
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const viewTeamUpper = searchParams.get("viewTeam")?.toUpperCase() ?? null;
+  const viewTeamObj = useMemo(
+    () =>
+      viewTeamUpper
+        ? teams.find((t) => t.number.toUpperCase() === viewTeamUpper)
+        : null,
+    [teams, viewTeamUpper],
+  );
+  const activeTeamObj = viewTeamObj ?? myTeamObj;
+  const isViewingOther =
+    viewTeamObj != null &&
+    (!myTeamObj || viewTeamObj.id !== myTeamObj.id);
+
+  // Build the href that swaps to a different team. Returns null for the
+  // active team (don't link to self) and for missing context.
+  const buildViewTeamHref = useCallback(
+    (teamNumber: string): string | null => {
+      if (!activeTeamObj) return null;
+      if (
+        teamNumber.toUpperCase() === activeTeamObj.number.toUpperCase()
+      ) {
+        return null;
+      }
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("viewTeam", teamNumber);
+      return `${pathname}?${params.toString()}`;
+    },
+    [activeTeamObj, pathname, searchParams],
+  );
+
+  // "Back to my matches" link: drop viewTeam from the URL.
+  const backToMyMatchesHref = useMemo(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("viewTeam");
+    const qs = params.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  }, [pathname, searchParams]);
 
   const [selectedDivisionId, setSelectedDivisionId] = useState<number | null>(
     () => {
@@ -304,6 +348,15 @@ export function EventScoutView({
     ? `/${league}${backQs ? `?${backQs}` : ""}`
     : "/";
 
+  // Smart back: when viewing another team, the back arrow returns to "my
+  // matches" by dropping ?viewTeam — staying on the same event page. Only
+  // when there's no viewTeam does it leave the event and go to the league
+  // events list.
+  const backHref = isViewingOther ? backToMyMatchesHref : homeHref;
+  const backLabel = isViewingOther
+    ? `Back to ${myTeamObj?.number ?? myTeam ?? "my matches"}`
+    : "Back to events";
+
   return (
     <div className="space-y-3">
       {/* Header row: back on the left, cached badge + refresh icon on the
@@ -312,9 +365,9 @@ export function EventScoutView({
           that has a cache to talk about). */}
       <div className="flex items-center justify-between gap-2">
         <Link
-          href={homeHref}
-          aria-label="Back to events"
-          title="Back to events"
+          href={backHref}
+          aria-label={backLabel}
+          title={backLabel}
           className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -393,8 +446,12 @@ export function EventScoutView({
         <TabButton
           active={tab === "matches"}
           onClick={() => setTab("matches")}
-          label="My matches"
-          disabled={!myTeamObj}
+          label={
+            isViewingOther && viewTeamObj
+              ? `${viewTeamObj.number} matches`
+              : "My matches"
+          }
+          disabled={!activeTeamObj}
         />
         <TabButton
           active={tab === "teams"}
@@ -403,11 +460,11 @@ export function EventScoutView({
         />
       </div>
 
-      {tab === "matches" && myTeamObj ? (
+      {tab === "matches" && activeTeamObj ? (
         <EventMatches
           eventId={event.id}
-          myTeamId={myTeamObj.id}
-          myTeamNumber={myTeamObj.number}
+          myTeamId={activeTeamObj.id}
+          myTeamNumber={activeTeamObj.number}
           teamNames={teamNamesMap}
           scoutedById={scoutedById}
           accent={
@@ -415,6 +472,7 @@ export function EventScoutView({
           }
           refreshTick={refreshTick}
           onMetaChange={setMatchesMeta}
+          teamLinkBuilder={buildViewTeamHref}
         />
       ) : null}
 

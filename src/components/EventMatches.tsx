@@ -110,6 +110,7 @@ export function EventMatches({
   accent,
   refreshTick = 0,
   onMetaChange,
+  teamLinkBuilder,
 }: {
   eventId: number;
   myTeamId: number;
@@ -127,6 +128,8 @@ export function EventMatches({
     fromCache: boolean;
     cachedAt: number | null;
   }) => void;
+  /** Returns a URL to switch the matches view to another team, or null. */
+  teamLinkBuilder?: (teamNumber: string) => string | null;
 }) {
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [stats, setStats] = useState<EventStatsMap>(new Map());
@@ -335,6 +338,7 @@ export function EventMatches({
           teamNames={teamNames}
           accent={accent}
           teamStats={teamStatsMap}
+          teamLinkBuilder={teamLinkBuilder}
         />
       )}
 
@@ -346,6 +350,7 @@ export function EventMatches({
           teamNames={teamNames}
           accent={accent}
           teamStats={teamStatsMap}
+          teamLinkBuilder={teamLinkBuilder}
         />
       )}
     </div>
@@ -486,6 +491,7 @@ function MatchSection({
   teamNames,
   accent,
   teamStats,
+  teamLinkBuilder,
 }: {
   title: string;
   matches: Match[];
@@ -493,6 +499,7 @@ function MatchSection({
   teamNames?: TeamInfoMap;
   accent?: "iq" | "v5";
   teamStats?: RowTeamStatMap;
+  teamLinkBuilder?: (teamNumber: string) => string | null;
 }) {
   return (
     <section>
@@ -513,6 +520,7 @@ function MatchSection({
             teamNames={teamNames}
             accent={accent}
             teamStats={teamStats}
+            teamLinkBuilder={teamLinkBuilder}
           />
         ))}
       </ul>

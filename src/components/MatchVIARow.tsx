@@ -1,4 +1,5 @@
 import * as React from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/lib/robotevents/schemas";
 
@@ -34,6 +35,7 @@ export function MatchVIARow({
   teamNames,
   teamStats,
   accent,
+  teamLinkBuilder,
 }: {
   match: Match;
   myTeamNumber: string;
@@ -42,6 +44,8 @@ export function MatchVIARow({
   teamStats?: RowTeamStatMap;
   /** "iq" | "v5" — controls the my-team highlight pill color. */
   accent?: "iq" | "v5";
+  /** Returns a URL to switch the matches view to a different team, or null. */
+  teamLinkBuilder?: (teamNumber: string) => string | null;
 }) {
   const cooperative = isCooperativeMatch(match);
   const scheduled = match.scheduled ? new Date(match.scheduled) : null;
@@ -52,7 +56,7 @@ export function MatchVIARow({
     const played = score != null;
     return (
       <li className="border-b border-border/50 last:border-b-0">
-        <div className="grid grid-cols-[15%_35%_15%_35%] items-center gap-1.5 px-2 py-2.5 sm:gap-2 sm:px-3 sm:py-3">
+        <div className="grid grid-cols-[15%_35%_15%_35%] items-center gap-3 px-2 py-2.5 sm:gap-4 sm:px-3 sm:py-3">
           <MatchLabelCell match={match} scheduled={scheduled} />
           <TeamStatColumn
             teams={teams[0] ? [teams[0]] : []}
@@ -62,6 +66,7 @@ export function MatchVIARow({
             teamNames={teamNames}
             teamStats={teamStats}
             accent={accent}
+            teamLinkBuilder={teamLinkBuilder}
           />
           <ScoreCell
             score={score ?? undefined}
@@ -77,6 +82,7 @@ export function MatchVIARow({
             teamNames={teamNames}
             teamStats={teamStats}
             accent={accent}
+            teamLinkBuilder={teamLinkBuilder}
           />
         </div>
       </li>
@@ -97,7 +103,7 @@ export function MatchVIARow({
 
   return (
     <li className="border-b border-border/50 last:border-b-0">
-      <div className="grid grid-cols-[3rem_minmax(0,1fr)_auto_auto_minmax(0,1fr)] items-center gap-1.5 px-2 py-2.5 sm:gap-2 sm:px-3 sm:py-3">
+      <div className="grid grid-cols-[3rem_minmax(0,1fr)_auto_auto_minmax(0,1fr)] items-center gap-3 px-2 py-2.5 sm:gap-4 sm:px-3 sm:py-3">
         <MatchLabelCell match={match} scheduled={scheduled} />
         <TeamStatColumn
           teams={redAlliance?.teams ?? []}
@@ -107,6 +113,7 @@ export function MatchVIARow({
           teamNames={teamNames}
           teamStats={teamStats}
           accent={accent}
+          teamLinkBuilder={teamLinkBuilder}
         />
         <ScoreCell
           score={redAlliance?.score}
@@ -128,6 +135,7 @@ export function MatchVIARow({
           teamNames={teamNames}
           teamStats={teamStats}
           accent={accent}
+          teamLinkBuilder={teamLinkBuilder}
         />
       </div>
     </li>
@@ -143,7 +151,7 @@ function MatchLabelCell({
 }) {
   return (
     <div className="flex flex-col leading-tight">
-      <span className="font-mono text-sm font-bold text-foreground sm:text-base">
+      <span className="font-mono text-base font-bold text-foreground sm:text-lg">
         {matchLabel(match)}
       </span>
       {scheduled && (
@@ -241,6 +249,7 @@ function TeamStatColumn({
   teamNames,
   teamStats,
   accent,
+  teamLinkBuilder,
 }: {
   teams: { team: { id: number; name?: string | null } }[];
   tone: Tone;
@@ -249,6 +258,7 @@ function TeamStatColumn({
   teamNames?: TeamInfoMap;
   teamStats?: RowTeamStatMap;
   accent?: "iq" | "v5";
+  teamLinkBuilder?: (teamNumber: string) => string | null;
 }) {
   if (!teams.length) {
     return <div className="text-xs text-muted-foreground/40">—</div>;
@@ -270,6 +280,7 @@ function TeamStatColumn({
           teamNames={teamNames}
           teamStats={teamStats}
           accent={accent}
+          teamLinkBuilder={teamLinkBuilder}
         />
       ))}
     </div>
@@ -284,6 +295,7 @@ function TeamStatCell({
   teamNames,
   teamStats,
   accent,
+  teamLinkBuilder,
 }: {
   team: { team: { id: number; name?: string | null } };
   tone: Tone;
@@ -292,6 +304,7 @@ function TeamStatCell({
   teamNames?: TeamInfoMap;
   teamStats?: RowTeamStatMap;
   accent?: "iq" | "v5";
+  teamLinkBuilder?: (teamNumber: string) => string | null;
 }) {
   const info = teamNames?.get(team.team.id);
   const stat = teamStats?.get(team.team.id);
@@ -314,6 +327,7 @@ function TeamStatCell({
         myTeamNumber={myTeamNumber}
         teamNames={teamNames}
         accent={accent}
+        href={teamLinkBuilder?.(cellNumber) ?? null}
       />
       {teamName && (
         <span className="mt-0.5 max-w-full text-[11px] leading-tight text-muted-foreground line-clamp-2">
@@ -368,12 +382,15 @@ function TeamNumber({
   myTeamNumber,
   teamNames,
   accent,
+  href,
 }: {
   team: { team: { id: number; name?: string | null } };
   tone: Tone;
   myTeamNumber: string;
   teamNames?: TeamInfoMap;
   accent?: "iq" | "v5";
+  /** When set, the number renders as a clickable link to that URL. */
+  href?: string | null;
 }) {
   const info = teamNames?.get(team.team.id);
   const number = info?.number ?? team.team.name ?? "—";
@@ -384,16 +401,26 @@ function TeamNumber({
     accent === "iq"
       ? "rounded-md bg-[#006BB4] px-1.5 py-0.5 font-bold text-white shadow-sm"
       : "rounded-md bg-primary px-1.5 py-0.5 font-bold text-primary-foreground shadow-sm";
-  return (
-    <span
-      className={cn(
-        "font-mono text-sm font-semibold tabular-nums sm:text-[15px]",
-        isMe ? myPill : TONE_TEXT[tone],
-      )}
-    >
-      {number}
-    </span>
+  const className = cn(
+    "font-mono text-sm font-semibold tabular-nums sm:text-[15px]",
+    isMe ? myPill : TONE_TEXT[tone],
+    href && !isMe && "hover:underline",
   );
+  // Linkable when caller provided an href (i.e. we're in the matches view
+  // and this is not the currently-active team).
+  if (href && !isMe) {
+    return (
+      <Link
+        href={href}
+        scroll={false}
+        className={className}
+        title={`View ${number}'s matches`}
+      >
+        {number}
+      </Link>
+    );
+  }
+  return <span className={className}>{number}</span>;
 }
 
 // ---------------------------------------------------------------------------

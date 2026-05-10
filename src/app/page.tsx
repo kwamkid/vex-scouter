@@ -1,16 +1,14 @@
 import { AppShell, PageHeader } from "@/components/AppShell";
-import { MyEventsFlow } from "@/components/MyEventsFlow";
+import { LeaguePicker } from "@/components/LeaguePicker";
 
 export default function HomePage() {
   return (
     <AppShell maxWidth="2xl">
       <PageHeader
-        title="Events"
-        subtitle="Find your team's upcoming, ongoing, and past events."
+        title="Pick your league"
+        subtitle="Choose VEX IQ or VEX V5 to see your team's events and stats."
       />
-      <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-        <MyEventsFlow />
-      </section>
+      <LeaguePicker />
     </AppShell>
   );
 }

@@ -21,8 +21,17 @@ export type NavItem = {
 };
 
 // Primary nav — always visible in the bottom tab bar.
+//
+// The Events tab href is rewritten by the bottom-bar to point at the user's
+// current or last-picked league (e.g. "/v5"); we keep "/" here so the entry
+// is meaningful before the user has picked a league.
 export const PRIMARY_NAV: NavItem[] = [
-  { href: "/", label: "Events", icon: Calendar, activeFor: ["/events", "/scout"] },
+  {
+    href: "/",
+    label: "Events",
+    icon: Calendar,
+    activeFor: ["/events", "/scout", "/iq", "/v5"],
+  },
   { href: "/watching", label: "Favorites", icon: Star },
   { href: "/profile", label: "My Team", icon: User },
 ];

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -14,6 +15,12 @@ import {
   isNavItemActive,
   type NavItem,
 } from "@/lib/nav";
+import {
+  isLeague,
+  LAST_LEAGUE_KEY,
+  leagueFromPathname,
+  type League,
+} from "@/lib/league";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,6 +108,7 @@ function TopBar() {
 
 function BottomTabBar() {
   const pathname = usePathname();
+  const eventsHref = useEventsHref(pathname);
   return (
     <nav
       aria-label="Primary"
@@ -110,21 +118,61 @@ function BottomTabBar() {
       )}
     >
       <div className="mx-auto flex w-full max-w-2xl items-stretch justify-around gap-1 px-2 py-1.5">
-        {PRIMARY_NAV.map((item) => (
-          <TabLink key={item.href} item={item} pathname={pathname} />
-        ))}
+        {PRIMARY_NAV.map((item) => {
+          // Events tab points at the user's current/last league when known.
+          const overrideHref = item.href === "/" ? eventsHref : undefined;
+          return (
+            <TabLink
+              key={item.href}
+              item={item}
+              pathname={pathname}
+              overrideHref={overrideHref}
+            />
+          );
+        })}
         <MoreTab pathname={pathname} />
       </div>
     </nav>
   );
 }
 
-function TabLink({ item, pathname }: { item: NavItem; pathname: string }) {
+/**
+ * Pick the best href for the Events tab.
+ * - On a league page (`/v5/...`) → stay in that league
+ * - Otherwise read last-picked league from localStorage
+ * - Fall back to `/` (the league picker) if neither applies
+ */
+function useEventsHref(pathname: string): string {
+  const currentLeague = leagueFromPathname(pathname);
+  const [lastLeague, setLastLeague] = useState<League | null>(null);
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(LAST_LEAGUE_KEY);
+      if (v && isLeague(v)) setLastLeague(v);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const league = currentLeague ?? lastLeague;
+  return league ? `/${league}` : "/";
+}
+
+function TabLink({
+  item,
+  pathname,
+  overrideHref,
+}: {
+  item: NavItem;
+  pathname: string;
+  overrideHref?: string;
+}) {
   const active = isNavItemActive(item, pathname);
   const Icon = item.icon;
   return (
     <Link
-      href={item.href}
+      href={overrideHref ?? item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
         "group relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 transition-colors",

@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, Info, RefreshCw } from "lucide-react";
+import { Info, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Stat } from "@/components/ui/stat";
 import { ProgressLoader } from "./ProgressLoader";
+import {
+  MatchVIARow,
+  cooperativeScore,
+  isCooperativeMatch,
+  isPlayed,
+  type RowTeamStatMap,
+} from "./MatchVIARow";
 import { consumeNdjson } from "@/lib/stream";
 import type { Match, MatchAlliance } from "@/lib/robotevents/schemas";
 import type { EventTeamStat } from "@/lib/robotevents/events";
@@ -100,6 +107,9 @@ export function EventMatches({
   myTeamNumber,
   teamNames,
   scoutedById,
+  accent,
+  refreshTick = 0,
+  onMetaChange,
 }: {
   eventId: number;
   myTeamId: number;
@@ -107,6 +117,16 @@ export function EventMatches({
   teamNames?: TeamInfoMap;
   /** Season-wide scouted rows used as fallback when event stats are empty. */
   scoutedById?: Map<number, TeamRow>;
+  /** "iq" | "v5" — drives accent color through summary panel + my-team badge. */
+  accent?: "iq" | "v5";
+  /** Bumped by parent to trigger a force-refresh (bypasses Upstash cache). */
+  refreshTick?: number;
+  /** Reports cache + load state to parent so it can render header chrome. */
+  onMetaChange?: (meta: {
+    loading: boolean;
+    fromCache: boolean;
+    cachedAt: number | null;
+  }) => void;
 }) {
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [stats, setStats] = useState<EventStatsMap>(new Map());
@@ -117,8 +137,12 @@ export function EventMatches({
   );
   const [fromCache, setFromCache] = useState(false);
   const [cachedAt, setCachedAt] = useState<number | null>(null);
-  // Bumping this triggers a re-fetch with ?refresh=1 (bypasses Upstash cache).
-  const [refreshTick, setRefreshTick] = useState(0);
+
+  // Report load/cache state up so EventScoutView can render the cached
+  // badge + refresh icon alongside the back button instead of inside us.
+  useEffect(() => {
+    onMetaChange?.({ loading, fromCache, cachedAt });
+  }, [loading, fromCache, cachedAt, onMetaChange]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -160,7 +184,15 @@ export function EventMatches({
     return () => ctrl.abort();
   }, [eventId, myTeamId, refreshTick]);
 
-  const { upcoming, past, myStat, eventStarted, cooperativeEvent } = useMemo(() => {
+  const {
+    upcoming,
+    past,
+    myStat,
+    eventStarted,
+    cooperativeEvent,
+    teamStatsMap,
+    userAvgScore,
+  } = useMemo(() => {
     const all = matches ?? [];
     const u: Match[] = [];
     const p: Match[] = [];
@@ -175,10 +207,74 @@ export function EventMatches({
     // VIQRC teamwork has no red-vs-blue split; if no match in the event has
     // both colors, treat the whole event as cooperative.
     const coop = all.length > 0 && all.every(isCooperativeMatch);
+
+    // Per-team avg score across played matches at this event. Works for
+    // both cooperative (shared score per match) and competitive (the team's
+    // alliance score). Aggregates first so we can attach to the rank/skill
+    // stats below.
+    const sumByTeam = new Map<number, { sum: number; n: number }>();
+    for (const m of p) {
+      for (const al of m.alliances) {
+        const s = al.score;
+        if (s == null) continue;
+        for (const t of al.teams ?? []) {
+          const cur = sumByTeam.get(t.team.id) ?? { sum: 0, n: 0 };
+          cur.sum += s;
+          cur.n += 1;
+          sumByTeam.set(t.team.id, cur);
+        }
+      }
+    }
+
+    // Build a teamId → { rank, skillsRank, skillsScore, avgMatchScore } lookup
+    // so each row can render compact stats under each team cell. Only the
+    // teams that appear in this match list are included.
+    const tsMap: RowTeamStatMap = new Map();
+    const seenTeams = new Set<number>();
+    for (const m of all) {
+      for (const al of m.alliances) {
+        for (const t of al.teams ?? []) {
+          if (seenTeams.has(t.team.id)) continue;
+          seenTeams.add(t.team.id);
+          const ds = pickStat(t.team.id, stats, scoutedById);
+          const agg = sumByTeam.get(t.team.id);
+          const avg = agg && agg.n > 0 ? agg.sum / agg.n : null;
+          if (ds || avg != null) {
+            tsMap.set(t.team.id, {
+              rank: ds?.rank ?? null,
+              skillsRank: ds?.skillsRank ?? null,
+              skillsScore: ds?.skillsScore ?? null,
+              avgMatchScore: avg,
+            });
+          }
+        }
+      }
+    }
+
+    // For cooperative matches, avg the user's played match scores at this
+    // event — rendered under the score column. Skips for V5 (per-side scores).
+    let avg: number | null = null;
+    if (coop) {
+      const myScores: number[] = [];
+      for (const m of p) {
+        const involved = m.alliances.some((al) =>
+          (al.teams ?? []).some((t) => t.team.id === myTeamId),
+        );
+        if (!involved) continue;
+        const s = cooperativeScore(m);
+        if (s != null) myScores.push(s);
+      }
+      if (myScores.length) {
+        avg = myScores.reduce((a, b) => a + b, 0) / myScores.length;
+      }
+    }
+
     return {
       upcoming: u,
       past: p,
       myStat: pickStat(myTeamId, stats, scoutedById),
+      teamStatsMap: tsMap,
+      userAvgScore: avg,
       // Event "started" means at least one team has rankings/skills logged.
       eventStarted: stats.size > 0,
       cooperativeEvent: coop,
@@ -209,31 +305,6 @@ export function EventMatches({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-2">
-          {fromCache && cachedAt != null && (
-            <>
-              <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                Cached
-              </span>
-              <span>updated {formatRelative(cachedAt)}</span>
-            </>
-          )}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setRefreshTick((t) => t + 1)}
-          disabled={loading}
-          title="Bypass cache and re-fetch from RobotEvents"
-        >
-          <RefreshCw
-            className={cn("h-3.5 w-3.5", loading && "animate-spin")}
-          />
-          Refresh
-        </Button>
-      </div>
-
       {!eventStarted && (
         <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
           <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-brand-orange" />
@@ -251,6 +322,8 @@ export function EventMatches({
           stat={myStat}
           skillsParticipants={countSkillsParticipants(stats)}
           cooperative={cooperativeEvent}
+          accent={accent}
+          cooperativeAvgScore={userAvgScore}
         />
       )}
 
@@ -258,11 +331,10 @@ export function EventMatches({
         <MatchSection
           title="Upcoming"
           matches={upcoming}
-          myTeamId={myTeamId}
           myTeamNumber={myTeamNumber}
           teamNames={teamNames}
-          stats={stats}
-          scoutedById={scoutedById}
+          accent={accent}
+          teamStats={teamStatsMap}
         />
       )}
 
@@ -270,11 +342,10 @@ export function EventMatches({
         <MatchSection
           title="Played"
           matches={past}
-          myTeamId={myTeamId}
           myTeamNumber={myTeamNumber}
           teamNames={teamNames}
-          stats={stats}
-          scoutedById={scoutedById}
+          accent={accent}
+          teamStats={teamStatsMap}
         />
       )}
     </div>
@@ -286,125 +357,114 @@ function MyTeamSummary({
   stat,
   skillsParticipants,
   cooperative = false,
+  accent,
+  cooperativeAvgScore,
 }: {
   teamNumber: string;
   stat: DisplayStat;
   skillsParticipants: number;
-  /** VIQRC events: hide W-L-T/WP/AP/AWP — they don't apply to teamwork. */
+  /** VIQRC events: TW score = cooperative match avg; competitive uses W-L-T. */
   cooperative?: boolean;
+  /** "iq" | "v5" — controls accent color (panel border, team# text). */
+  accent?: "iq" | "v5";
+  /** Cooperative-only: avg of the user's played match scores at this event. */
+  cooperativeAvgScore?: number | null;
 }) {
   const eventScope = stat.source === "event";
+  const isIq = accent === "iq";
+
+  // 2-row layout: Teamwork on top, Skills below. Each row = [Rank | Score].
+  const twRank = stat.rank != null ? `#${stat.rank}` : "—";
+  // Cooperative TW "score" = avg of played match scores. Competitive TW
+  // "score" doesn't have a single canonical number; W-L-T is the closest
+  // human-readable summary so we use that.
+  const twScore = cooperative
+    ? cooperativeAvgScore != null
+      ? `${Math.round(cooperativeAvgScore)}`
+      : "—"
+    : eventScope
+      ? `${stat.wins}-${stat.losses}-${stat.ties}`
+      : "—";
+
+  const skRank =
+    stat.skillsRank != null
+      ? skillsParticipants > 0 && eventScope
+        ? `#${stat.skillsRank}/${skillsParticipants}`
+        : `#${stat.skillsRank}`
+      : "—";
+
+  // SK score = combined best (prog+driver) with breakdown in parens.
+  let skScore: React.ReactNode = "—";
+  if (stat.skillsScore != null) {
+    skScore = (
+      <span className="inline-flex items-baseline gap-1">
+        <span>{stat.skillsScore}</span>
+        {(stat.progScore != null || stat.driverScore != null) && (
+          <span className="text-[10px] font-normal text-muted-foreground">
+            (PROG:{stat.progScore ?? 0}/DRV:{stat.driverScore ?? 0})
+          </span>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div
       className={cn(
-        "rounded-lg border p-3 sm:p-4",
+        "rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3",
         eventScope
-          ? "border-brand-orange/40 bg-brand-orange-soft/40"
+          ? isIq
+            ? "border-[#006BB4]/40 bg-[#006BB4]/5"
+            : "border-brand-orange/40 bg-brand-orange-soft/40"
           : "border-border/60 bg-muted/30",
       )}
     >
-      <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="mb-2 flex items-baseline gap-2 text-xs text-muted-foreground">
         <span>{eventScope ? "Your event stats" : "Your season stats"}</span>
-        <span className="font-mono font-semibold text-primary">
+        <span
+          className={cn(
+            "font-mono font-semibold",
+            isIq ? "text-[#006BB4]" : "text-primary",
+          )}
+        >
           {teamNumber}
         </span>
       </div>
-
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {/* Teamwork */}
-        <section className="rounded-md border border-border/60 bg-background/60 p-3">
-          <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Teamwork
-          </h4>
-          <div
-            className={cn(
-              "grid gap-3",
-              cooperative ? "grid-cols-1" : "grid-cols-3 sm:grid-cols-5",
-            )}
-          >
-            <Stat
-              label={eventScope ? "Rank" : "Best Rank"}
-              tooltip={
-                eventScope
-                  ? cooperative
-                    ? "Current teamwork rank in your division at this event."
-                    : "Current rank in your division at this event, ordered by WP → AP → SP."
-                  : "Lowest (best) division rank you finished at any event this season."
-              }
-              value={stat.rank != null ? `#${stat.rank}` : "—"}
-            />
-            {!cooperative && (
-              <Stat
-                label="W-L-T"
-                tooltip="Wins · Losses · Ties at this event."
-                value={
-                  eventScope
-                    ? `${stat.wins}-${stat.losses}-${stat.ties}`
-                    : "—"
-                }
-              />
-            )}
-            {!cooperative && eventScope && (
-              <Stat
-                label="WP"
-                tooltip="Win Points: 2 per win, 1 per tie. Primary tiebreaker for division rank."
-                value={stat.wp || "—"}
-              />
-            )}
-            {!cooperative && eventScope && (
-              <Stat
-                label="AP"
-                tooltip="Autonomous Points: 1 per match where your alliance won the autonomous bonus."
-                value={stat.ap || "—"}
-              />
-            )}
-            {!cooperative && eventScope && stat.awp != null && (
-              <Stat
-                label="AWP"
-                tooltip="Autonomous Win Point: bonus WP awarded when your alliance completes the autonomous win requirements."
-                value={stat.awp || "—"}
-              />
-            )}
-          </div>
-        </section>
-
-        {/* Skills */}
-        <section className="rounded-md border border-border/60 bg-background/60 p-3">
-          <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Skills
-          </h4>
-          <div className="grid grid-cols-3 gap-3">
-            <Stat
-              label="Rank"
-              tooltip={
-                eventScope
-                  ? `Your skills rank at this event${skillsParticipants > 0 ? ` (out of ${skillsParticipants} teams who ran skills)` : ""}.`
-                  : "Best skills rank from any event this season."
-              }
-              value={
-                stat.skillsRank != null
-                  ? skillsParticipants > 0 && eventScope
-                    ? `#${stat.skillsRank}/${skillsParticipants}`
-                    : `#${stat.skillsRank}`
-                  : "—"
-              }
-            />
-            <Stat
-              label="Score"
-              tooltip="Best programming + best driver run combined."
-              value={stat.skillsScore != null ? stat.skillsScore : "—"}
-            />
-            <Stat
-              label="Prog / Drv"
-              tooltip="Best programming run · Best driver run (separately)."
-              value={
-                stat.progScore != null || stat.driverScore != null
-                  ? `${stat.progScore ?? 0} / ${stat.driverScore ?? 0}`
-                  : "—"
-              }
-            />
-          </div>
-        </section>
+      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr_auto_1fr]">
+        {/* Row 1: Teamwork */}
+        <Stat
+          label="TW Rank"
+          value={twRank}
+          tooltip={
+            cooperative
+              ? "Current teamwork rank in your division at this event."
+              : "Current rank in your division, ordered by WP → AP → SP."
+          }
+        />
+        <Stat
+          label={cooperative ? "TW Score" : "W-L-T"}
+          value={twScore}
+          tooltip={
+            cooperative
+              ? "Your average cooperative match score at this event."
+              : "Wins · Losses · Ties at this event."
+          }
+        />
+        {/* Row 2: Skills */}
+        <Stat
+          label="SK Rank"
+          value={skRank}
+          tooltip={
+            eventScope
+              ? "Your skills rank at this event."
+              : "Best skills rank this season."
+          }
+        />
+        <Stat
+          label="SK Score"
+          value={skScore}
+          tooltip="Combined best programming + driver runs."
+        />
       </div>
     </div>
   );
@@ -422,40 +482,37 @@ function countSkillsParticipants(stats: EventStatsMap): number {
 function MatchSection({
   title,
   matches,
-  myTeamId,
   myTeamNumber,
   teamNames,
-  stats,
-  scoutedById,
+  accent,
+  teamStats,
 }: {
   title: string;
   matches: Match[];
-  myTeamId: number;
   myTeamNumber: string;
   teamNames?: TeamInfoMap;
-  stats: EventStatsMap;
-  scoutedById?: Map<number, TeamRow>;
+  accent?: "iq" | "v5";
+  teamStats?: RowTeamStatMap;
 }) {
   return (
     <section>
       <header className="mb-2 flex items-baseline justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
         </h3>
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="font-mono text-xs text-muted-foreground">
           {matches.length}
         </span>
       </header>
       <ul className="flex flex-col rounded-md border border-border/60 overflow-hidden">
         {matches.map((m) => (
-          <MatchRow
+          <MatchVIARow
             key={m.id}
             match={m}
-            myTeamId={myTeamId}
             myTeamNumber={myTeamNumber}
             teamNames={teamNames}
-            stats={stats}
-            scoutedById={scoutedById}
+            accent={accent}
+            teamStats={teamStats}
           />
         ))}
       </ul>
@@ -463,404 +520,8 @@ function MatchSection({
   );
 }
 
-function MatchRow({
-  match,
-  myTeamId,
-  myTeamNumber,
-  teamNames,
-  stats,
-  scoutedById,
-}: {
-  match: Match;
-  myTeamId: number;
-  myTeamNumber: string;
-  teamNames?: TeamInfoMap;
-  stats: EventStatsMap;
-  scoutedById?: Map<number, TeamRow>;
-}) {
-  // Fixed columns: blue alliance always on the left, red on the right.
-  // The user's team can sit in either; the ▸ marker handles "us" emphasis.
-  const blueAlliance = match.alliances.find(
-    (a) => a.color?.toLowerCase() === "blue",
-  );
-  const redAlliance = match.alliances.find(
-    (a) => a.color?.toLowerCase() === "red",
-  );
-  const myAlliance = match.alliances.find((a) =>
-    a.teams?.some((t) => t.team.id === myTeamId),
-  );
-  const oppAlliance = match.alliances.find((a) => a !== myAlliance);
-  const myScore = myAlliance?.score ?? 0;
-  const oppScore = oppAlliance?.score ?? 0;
-  const blueScore = blueAlliance?.score ?? 0;
-  const redScore = redAlliance?.score ?? 0;
-  const played = isPlayed(match);
-  const cooperative = isCooperativeMatch(match);
-  // VIQRC matches: both alliances cooperate for a shared score, so there is
-  // no winner/loser/tie — even when scores happen to differ on the wire.
-  const outcome: "W" | "L" | "T" | null = cooperative
-    ? null
-    : played
-    ? myScore > oppScore
-      ? "W"
-      : myScore < oppScore
-        ? "L"
-        : "T"
-    : null;
-  const blueWon = !cooperative && played && blueScore > redScore;
-  const redWon = !cooperative && played && redScore > blueScore;
-  const scheduled = match.scheduled ? new Date(match.scheduled) : null;
 
-  return (
-    <li className="border-b border-border/50 last:border-b-0">
-      <div
-        className={cn(
-          "flex flex-col gap-2 px-3 py-2.5",
-          // Stack on phones/tablets; switch to the 5-column grid only when we
-          // have real desktop room (lg = 1024px). Below that the cell content
-          // (team list + stat pill + score) gets too cramped.
-          "lg:grid lg:grid-cols-[5rem_1fr_auto_1fr_5rem] lg:items-center lg:gap-2 lg:px-2 lg:py-1.5",
-        )}
-      >
-        {/* Header: match label + schedule + outcome (outcome only on mobile here). */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <span className="font-mono text-xs font-semibold text-foreground">
-              {matchLabel(match)}
-            </span>
-            {scheduled && <ScheduledStamp date={scheduled} />}
-          </div>
-          <div className="lg:hidden">
-            <OutcomeCell
-              outcome={outcome}
-              myScore={myScore}
-              oppScore={oppScore}
-              played={played}
-              cooperative={cooperative}
-              sharedScore={cooperative ? blueScore || redScore : 0}
-            />
-          </div>
-        </div>
-
-        <AllianceCell
-          alliance={blueAlliance}
-          myTeamId={myTeamId}
-          myTeamNumber={myTeamNumber}
-          teamNames={teamNames}
-          stats={stats}
-          scoutedById={scoutedById}
-          winner={blueWon}
-          loser={redWon}
-          cooperative={cooperative}
-          hideScore={cooperative}
-        />
-        <span className="hidden text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 lg:block">
-          {cooperative ? "&" : "vs"}
-        </span>
-        <AllianceCell
-          alliance={redAlliance}
-          myTeamId={myTeamId}
-          myTeamNumber={myTeamNumber}
-          teamNames={teamNames}
-          stats={stats}
-          scoutedById={scoutedById}
-          winner={redWon}
-          loser={blueWon}
-          cooperative={cooperative}
-          hideScore={cooperative}
-        />
-        <div className="hidden lg:block">
-          <OutcomeCell
-            outcome={outcome}
-            myScore={myScore}
-            oppScore={oppScore}
-            played={played}
-            cooperative={cooperative}
-            sharedScore={cooperative ? blueScore || redScore : 0}
-          />
-        </div>
-      </div>
-    </li>
-  );
-}
-
-function AllianceCell({
-  alliance,
-  myTeamId,
-  myTeamNumber,
-  teamNames,
-  stats,
-  scoutedById,
-  winner = false,
-  loser = false,
-  cooperative = false,
-  hideScore = false,
-}: {
-  alliance?: MatchAlliance;
-  myTeamId: number;
-  myTeamNumber: string;
-  teamNames?: TeamInfoMap;
-  stats: EventStatsMap;
-  scoutedById?: Map<number, TeamRow>;
-  winner?: boolean;
-  loser?: boolean;
-  /** VIQRC: skip W-L-T pill rendering and W/L tinting. */
-  cooperative?: boolean;
-  /** VIQRC: shared score is shown once in the outcome cell, not per side. */
-  hideScore?: boolean;
-}) {
-  if (!alliance) {
-    return <div className="px-3 py-2 text-xs text-muted-foreground/60">—</div>;
-  }
-  const color = alliance.color?.toLowerCase();
-  const dotClass =
-    color === "red"
-      ? "bg-destructive"
-      : color === "blue"
-        ? "bg-blue-500"
-        : "bg-muted-foreground";
-
-  // Background tells the story: strong alliance color when that side won,
-  // dimmed gray when it lost, light alliance tint while the match is pending.
-  // For cooperative matches we never tint as winner/loser — the side keeps
-  // the light alliance color so red/blue pairing is still visible.
-  let bgClass = "";
-  if (winner) {
-    bgClass =
-      color === "red"
-        ? "bg-destructive/15"
-        : color === "blue"
-          ? "bg-blue-500/15"
-          : "";
-  } else if (loser) {
-    bgClass = "bg-muted/40";
-  } else {
-    bgClass =
-      color === "red"
-        ? "bg-destructive/5"
-        : color === "blue"
-          ? "bg-blue-500/5"
-          : "";
-  }
-  const teamList = alliance.teams ?? [];
-  const displayScore = alliance.score ?? null;
-
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2 px-2 py-2 min-w-0 rounded-md sm:px-3",
-        bgClass,
-        loser && "opacity-70",
-      )}
-    >
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", dotClass)} />
-      <ul className="flex flex-1 min-w-0 flex-col gap-1">
-        {teamList.map((t) => {
-          const info = teamNames?.get(t.team.id);
-          const number = info?.number ?? t.team.name ?? "—";
-          const name = info?.name ?? null;
-          const isMe =
-            t.team.id === myTeamId ||
-            number.toUpperCase() === myTeamNumber.toUpperCase();
-          const teamStat = pickStat(t.team.id, stats, scoutedById);
-
-          return (
-            <li
-              key={t.team.id}
-              className="flex min-w-0 flex-col gap-0.5 text-[11px]"
-            >
-              <div className="flex min-w-0 items-baseline gap-1.5">
-                <span
-                  className={cn(
-                    "font-mono shrink-0",
-                    isMe ? "font-bold text-primary" : "text-foreground",
-                  )}
-                >
-                  {isMe ? "▸" : ""}
-                  {number}
-                </span>
-                {name && (
-                  <span
-                    className={cn(
-                      "truncate flex-1 min-w-0",
-                      isMe
-                        ? "text-foreground font-semibold"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {name}
-                  </span>
-                )}
-              </div>
-              <TeamStatPill stat={teamStat} cooperative={cooperative} />
-            </li>
-          );
-        })}
-      </ul>
-      {!hideScore && (
-        <span
-          className={cn(
-            "ml-1 shrink-0 font-mono text-base tabular-nums self-center sm:ml-2",
-            winner ? "font-bold text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {displayScore ?? "—"}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function TeamStatPill({
-  stat,
-  cooperative = false,
-}: {
-  stat: DisplayStat | null;
-  cooperative?: boolean;
-}) {
-  if (!stat) {
-    return (
-      <span className="shrink-0 text-[10px] italic text-muted-foreground/50">
-        no data
-      </span>
-    );
-  }
-  const isEvent = stat.source === "event";
-  const rankLabel = isEvent
-    ? "Teamwork rank in this division"
-    : "Best teamwork rank from past events this season";
-
-  return (
-    <span
-      className={cn(
-        "shrink-0 inline-flex items-center gap-1.5 font-mono text-[10px]",
-        isEvent ? "text-foreground" : "text-muted-foreground italic",
-      )}
-    >
-      {stat.rank != null && (
-        <span title={rankLabel}>
-          <span className="text-muted-foreground">TW</span>
-          <span className="ml-0.5">#{stat.rank}</span>
-        </span>
-      )}
-      {!cooperative &&
-        isEvent &&
-        (stat.wins > 0 || stat.losses > 0 || stat.ties > 0) && (
-          <span title="Wins-Losses-Ties at this event">
-            {stat.wins}-{stat.losses}-{stat.ties}
-          </span>
-        )}
-      {stat.skillsScore != null && (
-        <span title="Skills score (prog + driver)">
-          <span className="text-muted-foreground">SK</span>
-          <span className="ml-0.5">{stat.skillsScore}</span>
-        </span>
-      )}
-    </span>
-  );
-}
-
-function OutcomeCell({
-  outcome,
-  myScore,
-  oppScore,
-  played,
-  cooperative = false,
-  sharedScore = 0,
-}: {
-  outcome: "W" | "L" | "T" | null;
-  myScore: number;
-  oppScore: number;
-  played: boolean;
-  /** VIQRC: skip W/L/Tie — show just the shared cooperative score. */
-  cooperative?: boolean;
-  sharedScore?: number;
-}) {
-  if (!played) {
-    return (
-      <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground/60">
-        Upcoming
-      </span>
-    );
-  }
-  if (cooperative) {
-    return (
-      <div className="flex flex-col items-end text-[11px] text-brand-orange">
-        <span className="font-semibold uppercase tracking-wide text-[10px]">
-          Played
-        </span>
-        <span className="font-mono text-sm font-bold tabular-nums text-foreground">
-          {sharedScore || "—"}
-        </span>
-      </div>
-    );
-  }
-  if (outcome == null) {
-    return (
-      <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground/60">
-        —
-      </span>
-    );
-  }
-  const label = outcome === "W" ? "Win" : outcome === "L" ? "Loss" : "Tie";
-  return (
-    <div
-      className={cn(
-        "flex flex-col items-end text-[11px]",
-        outcome === "W" && "text-emerald-600 dark:text-emerald-400",
-        outcome === "L" && "text-destructive/80",
-        outcome === "T" && "text-muted-foreground",
-      )}
-    >
-      <span className="font-semibold">{label}</span>
-      <span className="font-mono text-[10px] text-muted-foreground">
-        {myScore}–{oppScore}
-      </span>
-    </div>
-  );
-}
-
-function isPlayed(match: Match): boolean {
-  if (match.scored === true) return true;
-  for (const a of match.alliances) {
-    if ((a.score ?? 0) > 0) return true;
-  }
-  return false;
-}
-
-// VIQRC matches are cooperative: 2 teams share 1 score, no opposing alliance.
-// In RobotEvents, VIQRC Mix & Match still returns red/blue alliances — but
-// each alliance holds only 1 team and both alliances post the same shared
-// score. V5RC/VURC/VAIRC always have ≥2 teams per alliance. Discriminate by
-// team count rather than color presence.
-function isCooperativeMatch(match: Match): boolean {
-  if (match.alliances.length === 0) return false;
-  if (match.alliances.length === 1) return true;
-  return match.alliances.every((a) => (a.teams?.length ?? 0) <= 1);
-}
-
-
-function matchLabel(m: Match): string {
-  const prefix =
-    m.round === 1
-      ? "P"
-      : m.round === 2
-        ? "Q"
-        : m.round === 3
-          ? "R16"
-          : m.round === 4
-            ? "QF"
-            : m.round === 5
-              ? "SF"
-              : m.round === 6
-                ? "F"
-                : `R${m.round}`;
-  if (m.round <= 2) return `${prefix}-${m.matchnum}`;
-  const inst = m.instance ?? 1;
-  return `${prefix}${inst}-${m.matchnum}`;
-}
-
-function formatRelative(timestampMs: number): string {
+export function formatRelative(timestampMs: number): string {
   const diff = Date.now() - timestampMs;
   if (diff < 0) return "just now";
   const sec = Math.floor(diff / 1000);
@@ -871,24 +532,4 @@ function formatRelative(timestampMs: number): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   return `${day}d ago`;
-}
-
-function ScheduledStamp({ date }: { date: Date }) {
-  const time = date.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const day = date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-  return (
-    <div className="flex flex-col text-[10px] leading-tight text-muted-foreground">
-      <span className="flex items-center gap-1 whitespace-nowrap">
-        <Calendar className="h-3 w-3 shrink-0" />
-        {day}
-      </span>
-      <span className="pl-4 font-mono whitespace-nowrap">{time}</span>
-    </div>
-  );
 }

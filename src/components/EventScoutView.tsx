@@ -4,28 +4,25 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
-  Calendar,
-  MapPin,
-  Users,
   Loader2,
+  RefreshCw,
   Zap,
   Filter,
   X,
   Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RankingTable } from "@/components/RankingTable";
-import { EventMatches } from "@/components/EventMatches";
-import { PageHeader } from "@/components/AppShell";
+import { EventMatches, formatRelative } from "@/components/EventMatches";
 import { cn } from "@/lib/utils";
 import { parseTeamInput } from "@/lib/parse/team-input";
-import { findProgram } from "@/lib/robotevents/programs";
+import { findProgram, type ProgramCode } from "@/lib/robotevents/programs";
 import type { Division, EventRef, Team } from "@/lib/robotevents/schemas";
 import type { TeamRow } from "@/types";
 import { aggregateTeamStub } from "@/lib/ranking/stub";
+import { leagueFromProgram } from "@/lib/league";
 import { CountrySelect } from "./CountrySelect";
 
 type Props = {
@@ -78,6 +75,16 @@ export function EventScoutView({
   const [tab, setTab] = useState<"matches" | "teams">(() =>
     myTeam ? "matches" : "teams",
   );
+
+  // Cached/refresh chrome lives on the top header row next to "back". We
+  // own the refreshTick (incremented by the refresh button) and listen
+  // for cache state from EventMatches via onMetaChange.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [matchesMeta, setMatchesMeta] = useState<{
+    loading: boolean;
+    fromCache: boolean;
+    cachedAt: number | null;
+  }>({ loading: true, fromCache: false, cachedAt: null });
 
   const allCountries = useMemo(() => {
     const set = new Set<string>();
@@ -285,44 +292,64 @@ export function EventScoutView({
       ? `~${Math.ceil(etaSeconds / 60)} min left`
       : `~${etaSeconds}s left`;
 
-  // Back returns to the events list. The home page remembers the last team
-  // via localStorage so we don't need to thread the team through the URL.
-  const homeHref = "/";
+  // Back returns to the league-scoped events list with the same team+season
+  // query intact, so the user lands on their original results — not a blank
+  // form. Falls back to the league picker for non-league programs (VURC/VAIRC).
+  const league = leagueFromProgram(programCode as ProgramCode);
+  const backParams = new URLSearchParams();
+  if (myTeam) backParams.set("team", myTeam);
+  if (seasonId) backParams.set("season", String(seasonId));
+  const backQs = backParams.toString();
+  const homeHref = league
+    ? `/${league}${backQs ? `?${backQs}` : ""}`
+    : "/";
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Event scout"
-        subtitle={
-          myTeam ? (
-            <>
-              Your team:{" "}
-              <span className="font-mono font-semibold text-primary">
-                {myTeam}
-              </span>
-            </>
-          ) : undefined
-        }
-        actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href={homeHref}>
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Back to events</span>
-            </Link>
-          </Button>
-        }
-      />
-
-      <EventHeader
-        event={event}
-        myTeam={myTeam}
-        teamCount={totalTeams}
-        currentDivision={
-          hasMultipleDivisions && selectedDivisionId != null
-            ? divisions.find((d) => d.id === selectedDivisionId)?.name
-            : undefined
-        }
-      />
+    <div className="space-y-3">
+      {/* Header row: back on the left, cached badge + refresh icon on the
+          right. Cached info is shown only when EventMatches has reported
+          fresh meta and the user is on the matches tab (it's the only tab
+          that has a cache to talk about). */}
+      <div className="flex items-center justify-between gap-2">
+        <Link
+          href={homeHref}
+          aria-label="Back to events"
+          title="Back to events"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        {tab === "matches" && myTeamObj && (
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            {matchesMeta.fromCache && matchesMeta.cachedAt != null && (
+              <>
+                <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+                  Cached
+                </span>
+                <span className="hidden sm:inline">
+                  updated {formatRelative(matchesMeta.cachedAt)}
+                </span>
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRefreshTick((t) => t + 1)}
+              disabled={matchesMeta.loading}
+              aria-label="Refresh"
+              title="Bypass cache and re-fetch from RobotEvents"
+              className="h-9 w-9 p-0"
+            >
+              <RefreshCw
+                className={cn(
+                  "h-4 w-4",
+                  matchesMeta.loading && "animate-spin",
+                )}
+              />
+            </Button>
+          </div>
+        )}
+      </div>
 
       {hasMultipleDivisions && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -372,7 +399,7 @@ export function EventScoutView({
         <TabButton
           active={tab === "teams"}
           onClick={() => setTab("teams")}
-          label="Teams"
+          label="All Teams"
         />
       </div>
 
@@ -383,6 +410,11 @@ export function EventScoutView({
           myTeamNumber={myTeamObj.number}
           teamNames={teamNamesMap}
           scoutedById={scoutedById}
+          accent={
+            leagueFromProgram(programCode as ProgramCode) ?? undefined
+          }
+          refreshTick={refreshTick}
+          onMetaChange={setMatchesMeta}
         />
       ) : null}
 
@@ -595,94 +627,3 @@ function TabButton({
     </button>
   );
 }
-
-function EventHeader({
-  event,
-  myTeam,
-  teamCount,
-  currentDivision,
-}: {
-  event: EventRef;
-  myTeam?: string;
-  teamCount: number;
-  currentDivision?: string;
-}) {
-  const start = event.start ? new Date(event.start) : null;
-  const end = event.end ? new Date(event.end) : null;
-  const location = [
-    event.location?.venue,
-    event.location?.city,
-    event.location?.region,
-    event.location?.country,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {event.program?.code && (
-          <Badge variant="brand" className="text-[10px]">
-            {event.program.code}
-          </Badge>
-        )}
-        {event.level && (
-          <Badge variant="muted" className="text-[10px]">
-            {event.level}
-          </Badge>
-        )}
-        {event.ongoing && (
-          <Badge variant="brand" className="text-[10px]">
-            Ongoing
-          </Badge>
-        )}
-        {currentDivision && (
-          <Badge variant="brand" className="text-[10px]">
-            Division: {currentDivision}
-          </Badge>
-        )}
-      </div>
-      <h2 className="mt-2 text-base font-semibold text-foreground sm:text-lg">
-        {event.name}
-      </h2>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {start && (
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
-            {formatRange(start, end)}
-          </span>
-        )}
-        {location && (
-          <span className="flex items-center gap-1 min-w-0">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{location}</span>
-          </span>
-        )}
-        <span className="flex items-center gap-1">
-          <Users className="h-3.5 w-3.5" />
-          {teamCount} team{teamCount !== 1 ? "s" : ""}
-        </span>
-      </div>
-      {myTeam && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Your team{" "}
-          <span className="font-mono font-semibold text-primary">{myTeam}</span>{" "}
-          is pinned to the top of the list.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function formatRange(start: Date, end: Date | null): string {
-  const opts: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  };
-  const s = start.toLocaleDateString("en-US", opts);
-  if (!end || start.toDateString() === end.toDateString()) return s;
-  const e = end.toLocaleDateString("en-US", opts);
-  return `${s} – ${e}`;
-}
-

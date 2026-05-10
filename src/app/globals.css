@@ -112,6 +112,13 @@
   * {
     border-color: var(--border);
   }
+  /* Bump the root font-size so all rem-based sizes (Tailwind text-*, padding,
+     gap) grow proportionally. 17.5px ≈ 9% larger than the 16px default —
+     matches the reading comfort our users (kids + Thai parents) expect on
+     phones. Hard-coded text-[10px] / text-[11px] are intentional and stay. */
+  html {
+    font-size: 17.5px;
+  }
   html,
   body {
     background-color: var(--background);

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { PagedResponseSchema } from "./schemas";
 import { acquireRateLimitSlot } from "./rateLimit";
 
-export const RE_BASE = "https://www.robotevents.com/api/v2";
+export const RE_BASE = "https://events.vex.com/api/v2";
 
 export class RobotEventsError extends Error {
   constructor(
@@ -71,20 +71,8 @@ async function rawFetch(url: string, opts: FetchOpts): Promise<Response> {
       const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Accept: "application/json, text/plain, */*",
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Accept-Encoding": "gzip, deflate, br",
-          Referer: "https://www.robotevents.com/api/v2",
-          Origin: "https://www.robotevents.com",
-          "Sec-Fetch-Site": "same-origin",
-          "Sec-Fetch-Mode": "cors",
-          "Sec-Fetch-Dest": "empty",
-          "Sec-Ch-Ua":
-            '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
-          "Sec-Ch-Ua-Mobile": "?0",
-          "Sec-Ch-Ua-Platform": '"macOS"',
+          Accept: "application/json",
+          "User-Agent": "vex-scout/1.0 (+https://github.com/kwamkid/vex-scout)",
         },
         signal: controller.signal,
         next: {

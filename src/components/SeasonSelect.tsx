@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+const DEFAULT_VISIBLE = 2;
+const SHOW_MORE_VALUE = -1;
+
 export type SeasonOption = {
   id: number;
   name: string;
@@ -65,6 +68,18 @@ export function SeasonSelect({
   onChange: (id: number) => void;
   loading: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Always keep the currently-selected season visible even when collapsed,
+  // so users who navigated in with an older season picked don't see an empty box.
+  const selectedIndex = seasons.findIndex((s) => s.id === value);
+  const collapsedLimit =
+    selectedIndex >= 0 && selectedIndex >= DEFAULT_VISIBLE
+      ? selectedIndex + 1
+      : DEFAULT_VISIBLE;
+  const visible = expanded ? seasons : seasons.slice(0, collapsedLimit);
+  const showMore = !expanded && seasons.length > visible.length;
+
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -72,17 +87,27 @@ export function SeasonSelect({
       </span>
       <select
         value={value ?? ""}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const next = Number(e.target.value);
+          if (next === SHOW_MORE_VALUE) {
+            setExpanded(true);
+            return;
+          }
+          onChange(next);
+        }}
         disabled={loading || seasons.length === 0}
         className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         {loading && <option>Loading…</option>}
         {!loading &&
-          seasons.map((s) => (
+          visible.map((s) => (
             <option key={s.id} value={s.id}>
               {shortSeason(s.name)}
             </option>
           ))}
+        {!loading && showMore && (
+          <option value={SHOW_MORE_VALUE}>Show older seasons…</option>
+        )}
       </select>
     </label>
   );
